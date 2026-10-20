@@ -1,6 +1,10 @@
 # Ink Cleanup
 
-A browser front end for ImageMagick and Potrace that streamlines cleaning and vectorizing scanned linework. Clean the raster, then export ink as pixels or vectors.
+A browser front end for ImageMagick and Potrace built for cleaning and vectorizing scanned linework. Tuned defaults are ready for scanned ink, so most scans need only small adjustments.
+
+On top of these tools, **aliasing guard** checks that linework keeps soft edge tones for resampling for display or print, and a DXF export option produces filled shapes ready for CAD.
+
+Every slider change re-runs the full cleanup and trace live, exports at true physical size.
 
 ## Open and use
 
