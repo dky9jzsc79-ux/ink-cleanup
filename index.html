@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<!--
+Copyright (C) 2026 Mason
+SPDX-License-Identifier: GPL-2.0-or-later
+Ink Cleanup is free software, licensed under GPL version 2 or any later version.
+See LICENSE. This program is provided without warranty.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ink Cleanup</title>
+<style>
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #000000;
+  --muted: #f5f5f5;
+  --muted-foreground: #525252;
+  --border: #000000;
+  --border-light: #e5e5e5;
+  --image-white: #fff;
+  --preview-red: #bf616a;
+  --risk-red: #a61b1b;
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0; }
+body {
+  font-family: var(--font-body);
+  background: var(--background);
+  color: var(--foreground);
+  line-height: 1.625;
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 1px, #000 1px, #000 2px);
+  background-size: 100% 4px;
+  opacity: 0.015;
+}
+code { font-family: var(--font-mono); font-size: 0.92em; }
+:focus-visible { outline: 3px solid var(--foreground); outline-offset: 3px; }
+[hidden] { display: none !important; }
+
+/* ─── Masthead ─── */
+.masthead { position: sticky; top: 0; z-index: 20; background: var(--background); border-bottom: 4px solid var(--foreground); }
+.masthead-inner {
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.masthead h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+.masthead h1 em { font-weight: 400; }
+.kicker, .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-foreground);
+}
+
+/* ─── Landscape workflow ─── */
+.workspace {
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 20px;
+  align-items: start;
+}
+.workflow-column { display: grid; gap: 20px; min-width: 0; }
+.tool-pane { min-width: 0; }
+
+/* ─── Source ─── */
+.source-title { display: block; margin-bottom: 8px; }
+.drop-zone {
+  width: 100%;
+  min-height: 72px;
+  padding: 20px;
+  border: 2px dashed var(--foreground);
+  background: var(--background);
+  color: var(--foreground);
+  font: italic 1.125rem var(--font-body);
+  cursor: pointer;
+  transition: background-color 100ms, color 100ms;
+}
+.drop-zone:hover, .drop-zone.dragover { background: var(--foreground); color: var(--background); border-style: solid; }
+.status-bar {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  padding: 8px 0 0;
+  min-height: 32px;
+}
+.status-bar.error { background: var(--foreground); color: var(--background); padding: 8px 12px; margin-top: 8px; }
+.progress-bar { height: 2px; background: var(--border-light); overflow: hidden; margin-top: 4px; }
+.progress-bar-fill { height: 100%; width: 0%; background: var(--foreground); }
+
+/* ─── Preview panels ─── */
+.panel { border: 1px solid var(--border); background: var(--background); min-width: 0; display: flex; flex-direction: column; }
+.panel-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 52px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.panel-header .info { color: var(--muted-foreground); text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.panel-header label { display: flex; align-items: center; gap: 6px; }
+.panel-canvas-wrap {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  cursor: zoom-in;
+  position: relative;
+  background: var(--canvas-bg, var(--muted));
+  flex: 1;
+  min-height: 240px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.panel-canvas-wrap:disabled { cursor: default; }
+.panel-canvas-wrap[aria-expanded="true"] { cursor: zoom-out; }
+.panel-canvas-wrap canvas {
+  max-width: 100%;
+  max-height: 400px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+#afterWrap, #vectorWrap { background: var(--image-white); }
+#afterWrap[data-background="red"], #vectorWrap[data-background="red"] { background: var(--preview-red); }
+.panel-footer {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vector-status { flex: 1; font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted-foreground); }
+/* ─── Buttons and inputs ─── */
+.btn {
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 2px solid var(--foreground);
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: none;
+}
+.btn:hover:not(:disabled) { background: var(--foreground); color: var(--background); }
+.btn-primary { background: var(--foreground); color: var(--background); }
+.btn-primary:hover:not(:disabled) { background: var(--background); color: var(--foreground); }
+.btn-ghost { border-color: transparent; min-height: 36px; padding: 4px 8px; }
+.btn-ghost:hover:not(:disabled) { background: transparent; color: var(--foreground); text-decoration: underline; }
+.btn:disabled { border-style: dashed; background: transparent; color: var(--muted-foreground); cursor: not-allowed; }
+.btn-ghost:disabled { border-color: transparent; }
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 36px;
+  padding: 4px 22px 4px 2px;
+  border: 0;
+  border-bottom: 2px solid var(--foreground);
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0h10L5 6z'/%3E%3C/svg%3E") no-repeat right 4px center;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+select:focus-visible { outline: none; border-bottom-width: 4px; }
+input[type="color"] {
+  width: 44px;
+  height: 32px;
+  padding: 2px;
+  border: 2px solid var(--foreground);
+  background: var(--background);
+  cursor: pointer;
+}
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--foreground);
+  background: var(--background);
+  vertical-align: -3px;
+  cursor: pointer;
+}
+input[type="checkbox"]:checked { background: var(--foreground); box-shadow: inset 0 0 0 2px var(--background); }
+input[type="range"] {
+  display: block;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 32px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: var(--foreground); }
+input[type="range"]::-moz-range-track { height: 2px; background: var(--foreground); }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 22px;
+  margin-top: -10px;
+  border: 2px solid var(--foreground);
+  background: var(--foreground);
+}
+input[type="range"]::-moz-range-thumb { width: 12px; height: 22px; border: 2px solid var(--foreground); border-radius: 0; background: var(--foreground); }
+input[type="range"]:hover::-webkit-slider-thumb { background: var(--background); }
+input[type="range"]:hover::-moz-range-thumb { background: var(--background); }
+input[type="range"]:disabled { cursor: not-allowed; }
+input[type="range"]:disabled::-webkit-slider-runnable-track { background: repeating-linear-gradient(90deg, var(--foreground) 0 4px, transparent 4px 8px); }
+input[type="range"]:disabled::-moz-range-track { background: repeating-linear-gradient(90deg, var(--foreground) 0 4px, transparent 4px 8px); }
+input[type="range"]:disabled::-webkit-slider-thumb { background: var(--background); border-style: dashed; }
+input[type="range"]:disabled::-moz-range-thumb { background: var(--background); border-style: dashed; }
+
+/* ─── Export bar: one export per tool ─── */
+.export-bar { display: grid; border: 1px solid var(--border); }
+.export-group { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px; }
+.export-group .tool-name { font: italic 1.5rem var(--font-display); letter-spacing: -0.025em; margin-right: auto; }
+.export-group label { display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; }
+.export-note { grid-column: 1 / -1; border-top: 1px solid var(--border-light); padding: 8px 12px; font-size: 0.8125rem; color: var(--muted-foreground); }
+
+/* ─── Aliasing guard: black normally, red for measured risk ─── */
+.guard { position: relative; background: var(--foreground); color: var(--background); padding: 20px; }
+.guard[data-risk="true"] { background: var(--risk-red); }
+.guard::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(90deg, transparent, transparent 1px, #fff 1px, #fff 2px);
+  background-size: 4px 100%;
+  opacity: 0.03;
+}
+.guard h2 { font: italic 1.5rem var(--font-display); letter-spacing: -0.025em; margin-bottom: 12px; }
+.guard-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--background); }
+.guard-item { padding: 10px 12px 0 0; }
+.guard-item + .guard-item { border-left: 1px solid var(--background); padding-left: 12px; }
+.guard-item:nth-child(3) { border-left: 0; padding-left: 0; }
+.guard-item .label { font-family: var(--font-mono); font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8; }
+.guard-item .value { font: 1.125rem var(--font-display); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.guard-status { margin-top: 16px; padding: 4px 0 4px 12px; font-size: 0.875rem; border-left: 1px solid var(--background); }
+.guard-binary { border-left-width: 8px; }
+.guard-few { border-left-width: 4px; }
+.guard-present { border-left-width: 1px; }
+.guard-insufficient { border-left-style: dashed; border-left-width: 2px; }
+
+/* ─── Tool controls ─── */
+.tool-pane > header { border-bottom: 2px solid var(--foreground); padding-bottom: 8px; }
+.tool-pane h3 { font: italic 400 2.5rem var(--font-display); letter-spacing: -0.05em; line-height: 1; }
+.tool-pane > header a { color: var(--foreground); text-underline-offset: 3px; }
+.tool-pane > header p { font-size: 0.875rem; color: var(--muted-foreground); margin-top: 4px; }
+.control-group { padding: 8px 0 16px; border-bottom: 1px solid var(--border-light); }
+.control-group > label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+.control-group .step { color: var(--muted-foreground); font-size: 0.6875rem; min-width: 1.6em; }
+.control-group .tool { font-weight: 700; overflow-wrap: anywhere; }
+.control-group .param { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.control-group .val { font-weight: 700; }
+.control-group .hint { font-size: 0.875rem; color: var(--muted-foreground); line-height: 1.45; }
+.control-group .hint code { color: var(--foreground); }
+.control-group .check { display: inline-flex; align-items: center; gap: 6px; color: var(--foreground); font-family: var(--font-mono); font-size: 0.8125rem; cursor: pointer; }
+.control-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 0; }
+
+.panel-header code { overflow-wrap: anywhere; }
+.panel-footer label { font: .8125rem var(--font-mono); }
+.minimized-strip {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+  text-align: left;
+  font: .8125rem var(--font-mono);
+  cursor: pointer;
+}
+.workspace[data-expanded] { grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); max-width: 1920px; }
+.workspace[data-expanded="before"] { grid-template-columns: minmax(0, 1fr); }
+.workspace[data-expanded] .panel-canvas-wrap { min-height: min(65vh, 700px); }
+.workspace[data-expanded] .panel-canvas-wrap canvas { width: 100%; max-height: 70vh; object-fit: contain; }
+@media (max-width: 1199px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); max-width: 700px; }
+}
+@media (max-width: 700px) {
+  .workspace[data-expanded] { grid-template-columns: minmax(0, 1fr); }
+  .workspace { padding: 16px; }
+  .masthead-inner { padding: 12px 16px; align-items: center; }
+  .masthead h1 { font-size: 2rem; }
+  .masthead .btn { padding: 6px 10px; font-size: .625rem; }
+}
+@media (min-width: 1200px) {
+  .masthead-inner { padding: 10px 16px; }
+  .masthead h1 { font-size: 2rem; }
+  .workspace { padding: 12px 16px; gap: 14px; }
+  .workflow-column { gap: 12px; }
+  .tool-pane h3 { font-size: 1.75rem; }
+  .tool-pane > header { padding-bottom: 6px; }
+  .tool-pane > header p { font-size: .6875rem; margin-top: 2px; }
+  .control-group { padding: 2px 0 8px; }
+  .control-group > label, .control-group .check { font-size: .6875rem; gap: 5px; }
+  .control-group .step { font-size: .5625rem; }
+  .control-group .hint { font-size: .6875rem; line-height: 1.3; }
+  .control-row { margin: 4px 0 0; }
+  input[type="range"] { height: 22px; }
+  input[type="range"]::-webkit-slider-thumb { width: 9px; height: 16px; margin-top: -7px; }
+  input[type="range"]::-moz-range-thumb { width: 9px; height: 16px; }
+  input[type="checkbox"] { width: 13px; height: 13px; }
+  input[type="color"] { height: 26px; width: 36px; }
+  .btn { min-height: 30px; padding: 5px 9px; font-size: .625rem; }
+  select { min-height: 28px; font-size: .6875rem; padding-right: 18px; }
+  .drop-zone { min-height: 64px; padding: 12px; font-size: .875rem; }
+  .status-bar, .eyebrow, .panel-header { font-size: .625rem; }
+  .panel-header { min-height: 36px; padding: 6px 8px; gap: 4px; }
+  .panel-canvas-wrap { min-height: 180px; padding: 12px; }
+  .panel-canvas-wrap canvas { max-height: 250px; }
+  .panel-footer { padding: 5px 8px; }
+  .panel-footer label, .export-group label { font-size: .6875rem; }
+  .export-group { padding: 8px; gap: 6px; }
+  .export-group .tool-name { font-size: 1.125rem; }
+  .export-note { padding: 6px 8px; font-size: .6875rem; line-height: 1.4; }
+  .guard { padding: 12px; }
+  .guard h2 { font-size: 1.125rem; margin-bottom: 8px; }
+  .guard-item { padding-top: 6px; }
+  .guard-item .label { font-size: .5625rem; }
+  .guard-item .value { font-size: .9375rem; }
+  .guard-status { font-size: .6875rem; line-height: 1.4; margin-top: 10px; }
+  .minimized-strip { padding: 7px 10px; font-size: .6875rem; }
+  .workspace[data-expanded] .panel-canvas-wrap { min-height: min(36vh, 380px); }
+  .workspace[data-expanded] .panel-canvas-wrap canvas { max-height: 36vh; }
+}
+/* Reserve the same status area before, during and after a trace. */
+.vector-status { color: inherit; font-size: .6875rem; line-height: 1.4; min-height: 3em; }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-inner">
+    <h1>Ink <em>Cleanup</em></h1>
+    <button type="button" class="btn" id="resetBtn">Reset to defaults</button>
+  </div>
+</header>
+
+<main class="workspace" id="workspace">
+  <button type="button" class="minimized-strip" id="restoreLayout" hidden>Show all</button>
+  <section class="workflow-column" id="beforeColumn" aria-label="Before">
+    <div class="source">
+      <span class="eyebrow source-title">Source · PNG</span>
+      <button type="button" id="dropZone" class="drop-zone">Drop a PNG here, or click to choose a file</button>
+      <input type="file" id="fileInput" accept="image/png" hidden>
+      <div id="statusBar" class="status-bar" role="status" aria-live="polite"></div>
+      <div id="progressBar" class="progress-bar" style="visibility:hidden"><div class="progress-bar-fill" id="progressFill"></div></div>
+    </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Before · <code id="sourceName">input.png</code></span>
+          <span class="info" id="beforeInfo">—</span>
+        </div>
+        <button type="button" class="panel-canvas-wrap" id="beforeWrap" aria-label="Expand Before preview" aria-expanded="false" aria-controls="workspace" disabled>
+          <canvas id="beforeCanvas"></canvas>
+        </button>
+      </div>
+  </section>
+    <section class="tool-pane" id="rasterControls" aria-labelledby="magickTitle">
+      <header>
+        <h3 id="magickTitle">magick</h3>
+        <p><a href="https://imagemagick.org/" target="_blank" rel="noopener noreferrer">docs</a></p>
+      </header>
+      <div class="control-group">
+        <label for="blurSlider"><span class="step">01</span><code class="tool">-blur</code><span class="param">0x<span class="val" id="blurVal">30</span></span></label>
+        <input type="range" id="blurSlider" min="0" max="100" step="1" value="30" aria-describedby="blurHint">
+        <p class="hint" id="blurHint">Flat-field: divide by this blurred copy (<code>-compose DivideSrc</code>), then <code>-normalize</code>. Evens out paper. 0 skips.</p>
+      </div>
+      <div class="control-group">
+        <label for="upsampleSlider"><span class="step">02</span><code class="tool">-resize</code><span class="param"><span class="val" id="upsampleVal">300</span>%</span></label>
+        <input type="range" id="upsampleSlider" min="1" max="4" step="0.5" value="3" aria-describedby="upsampleHint">
+        <p class="hint" id="upsampleHint">Upsample with <code>-filter Triangle</code> before levels. This is what creates the soft edge ramp.</p>
+      </div>
+      <div class="control-group">
+        <label for="blackPointSlider"><span class="step">03</span><code class="tool">-level</code><span class="param">black <span class="val" id="blackPointVal">8</span>%</span></label>
+        <input type="range" id="blackPointSlider" min="0" max="60" step="1" value="8" aria-describedby="blackPointHint">
+        <p class="hint" id="blackPointHint">Tones at or below this become solid ink.</p>
+      </div>
+      <div class="control-group">
+        <label for="whitePointSlider"><span class="step">04</span><code class="tool">-level</code><span class="param">white <span class="val" id="whitePointVal">92</span>%</span></label>
+        <input type="range" id="whitePointSlider" min="40" max="100" step="1" value="92" aria-describedby="whitePointHint">
+        <p class="hint" id="whitePointHint">Tones at or above this become paper. Must sit above black.</p>
+      </div>
+      <div class="control-group">
+        <label for="speckAreaSlider"><span class="step">05</span><code class="tool">-connected-components 8</code><span class="param"><span class="val" id="speckAreaVal">4</span> px²</span></label>
+        <input type="range" id="speckAreaSlider" min="0" max="100" step="1" value="4" aria-describedby="speckAreaHint">
+        <p class="hint" id="speckAreaHint">Speck filter: drop ink blobs smaller than this area, scaled by <code>-resize</code>. 0 keeps everything.</p>
+      </div>
+      <div class="control-group">
+        <label for="borderSlider"><span class="step">06</span><code class="tool">-border</code><span class="param"><span class="val" id="borderVal">12</span> px</span></label>
+        <input type="range" id="borderSlider" min="0" max="60" step="1" value="12" aria-describedby="borderHint">
+        <p class="hint" id="borderHint">Clear or white margin added after trimming. <span id="borderMm">~1.0 mm at 300 dpi</span></p>
+      </div>
+      <div class="control-group">
+        <label for="dpiSlider"><span class="step">07</span><code class="tool">-density</code><span class="param"><span class="val" id="dpiVal">300</span> ppi</span></label>
+        <input type="range" id="dpiSlider" min="72" max="1200" step="1" value="300" aria-describedby="dpiHint">
+        <p class="hint" id="dpiHint">Physical size for every export (PNG <code>pHYs</code>, vector millimetres). Never resamples.</p>
+      </div>
+    </section>
+
+  <section class="workflow-column" id="rasterOutput" aria-label="Raster preview and export">
+    <div class="panel">
+      <div class="panel-header"><span>Raster</span><span class="info" id="afterInfo">—</span></div>
+      <button type="button" class="panel-canvas-wrap" id="afterWrap" aria-label="Expand Raster preview" aria-expanded="false" aria-controls="workspace" disabled>
+        <canvas id="afterCanvas"></canvas>
+      </button>
+      <div class="panel-footer"><label for="previewBackground">Backdrop <select id="previewBackground"><option value="white">White</option><option value="red">Red</option></select></label></div>
+    </div>
+    <div class="export-bar">
+      <div class="export-group">
+        <span class="tool-name">magick</span>
+        <label for="outputBackground"><code>-background</code>
+          <select id="outputBackground">
+            <option value="transparent">Transparent</option>
+            <option value="white">White</option>
+          </select>
+        </label>
+        <button type="button" class="btn btn-primary" id="exportBtn" disabled>Export PNG</button>
+      </div>
+      <p class="export-note hint"><code>-background</code> sets ImageMagick paper colour for PNG and PDF: Transparent or White.</p>
+    </div>
+    <section class="guard" id="aliasingGuard" aria-labelledby="guardTitle">
+      <h2 id="guardTitle">Aliasing guard</h2>
+      <div class="guard-row">
+        <div class="guard-item"><div class="label">Edge band px</div><div class="value" id="guardBand">—</div></div>
+        <div class="guard-item"><div class="label">Intermediate</div><div class="value" id="guardGray">—</div></div>
+        <div class="guard-item"><div class="label">Soft fraction</div><div class="value" id="guardFraction">—</div></div>
+        <div class="guard-item"><div class="label">Measured on</div><div class="value" id="guardSource">—</div></div>
+      </div>
+      <div class="guard-status guard-insufficient" id="guardStatus">No image loaded</div>
+    </section>
+  </section>
+    <section class="tool-pane" id="vectorControls" aria-labelledby="potraceTitle">
+      <header>
+        <h3 id="potraceTitle">potrace</h3>
+        <p><a href="https://potrace.sourceforge.net/" target="_blank" rel="noopener noreferrer">docs</a></p>
+      </header>
+      <div class="control-group">
+        <label for="vectorThreshold"><span class="step">08</span><code class="tool">threshold</code><span class="param"><span class="val" id="vectorThresholdVal">auto</span></span></label>
+        <input type="range" id="vectorThreshold" min="0" max="254" step="1" value="128" disabled aria-describedby="vectorThresholdHint">
+        <p class="hint" id="vectorThresholdHint"><label class="check" for="vectorAuto"><input type="checkbox" id="vectorAuto" checked> Otsu</label> picks the ink/paper split automatically. Uncheck to set the level by hand.</p>
+      </div>
+      <div class="control-group">
+        <label for="vectorOffset"><span class="step">09</span><code class="tool">threshold offset</code><span class="param"><span class="val" id="vectorOffsetVal">0</span></span></label>
+        <input type="range" id="vectorOffset" min="-100" max="100" step="1" value="0" aria-describedby="vectorOffsetHint">
+        <p class="hint" id="vectorOffsetHint">Positive values keep more pale ink.</p>
+      </div>
+      <div class="control-group">
+        <label for="vectorSpeck"><span class="step">10</span><code class="tool">-connected-components 8</code><span class="param"><span class="val" id="vectorSpeckVal">4</span> px²</span></label>
+        <input type="range" id="vectorSpeck" min="0" max="100" step="1" value="4" aria-describedby="vectorSpeckHint">
+        <p class="hint" id="vectorSpeckHint">Drops smaller ink blobs; also sets potrace <code>--turdsize</code> to suppress paths up to this area.</p>
+      </div>
+      <div class="control-group">
+        <label for="vectorCorner"><span class="step">11</span><code class="tool">--alphamax</code><span class="param"><span class="val" id="vectorCornerVal">1</span></span></label>
+        <input type="range" id="vectorCorner" min="0" max="1.34" step="0.01" value="1" aria-describedby="vectorCornerHint">
+        <p class="hint" id="vectorCornerHint">Corner threshold: 0 makes polygons; higher values round more corners.</p>
+      </div>
+      <div class="control-group">
+        <label for="vectorOptimize"><span class="step">12</span><code class="tool">--opttolerance</code><span class="param"><span class="val" id="vectorOptimizeVal">0.2</span></span></label>
+        <input type="range" id="vectorOptimize" min="0" max="1" step="0.05" value="0.2" aria-describedby="vectorOptimizeHint">
+        <p class="hint" id="vectorOptimizeHint">Curve optimisation; higher uses fewer curves. 0 turns it off (<code>--longcurve</code>).</p>
+      </div>
+      <div class="control-group">
+        <label for="vectorColor"><span class="step">13</span><code class="tool">--color</code></label>
+        <div class="control-row"><input type="color" id="vectorColor" value="#000000" aria-describedby="vectorColorHint"></div>
+        <p class="hint" id="vectorColorHint">Vector fill colour.</p>
+      </div>
+    </section>
+  <section class="workflow-column" id="vectorOutput" aria-label="Vector preview and export">
+    <div class="panel">
+      <div class="panel-header"><span>Vector</span><span class="info" id="vectorInfo">—</span></div>
+      <button type="button" class="panel-canvas-wrap" id="vectorWrap" aria-label="Expand Vector preview" aria-expanded="false" aria-controls="workspace" disabled>
+        <canvas id="vectorCanvas" width="0" height="0"></canvas>
+      </button>
+      <div class="panel-footer"><label for="vectorPreviewBackground">Backdrop <select id="vectorPreviewBackground"><option value="white">White</option><option value="red">Red</option></select></label></div>
+    </div>
+    <div class="export-bar">
+      <div class="export-group">
+        <span class="tool-name">potrace</span>
+        <label for="vectorFormat"><code>-b</code>
+          <select id="vectorFormat"><option value="svg">SVG</option><option value="pdf">PDF</option><option value="dxf">DXF</option></select>
+        </label>
+        <button type="button" class="btn btn-primary" id="vectorExportBtn" disabled>Export vector</button>
+      </div>
+      <p class="export-note hint"><code>-b</code> selects the Potrace output backend: SVG, PDF or DXF.</p>
+    </div>
+    <p id="vectorStatus" class="vector-status" role="status" aria-live="polite">Load a PNG to clean and trace automatically.</p>
+  </section>
+</main>
+
+<script>
+function exportFileSpec(format, sourceName) {
+  const types = { png: 'image/png', svg: 'image/svg+xml', pdf: 'application/pdf', dxf: 'application/dxf' };
+  if (!Object.hasOwn(types, format)) throw new Error('Unsupported export format');
+  return { format, mime: types[format], name: sourceName.replace(/\.png$/i, '') + (format === 'png' ? '_clean.' : '_vector.') + format };
+}
+
+// ─── Pure helpers shared by page, worker and tests ───────────
+function scaledSizes(speckArea, dilation, scale) {
+  return {
+    areaCutoff: Math.round(speckArea * scale * scale),
+    diskRadius: Math.round(dilation * scale)
+  };
+}
+
+// JavaScript 8-connected foreground filtering avoids the Q8 native component-label limit.
+// Retained support is dilated before restoring gray edges; CLI region merging is approximate.
+function jsSpeckFilter(values, w, h, areaCutoff) {
+  const seen = new Uint8Array(values.length);
+  const queue = new Uint32Array(values.length);
+  let components = 0;
+  for (let p = 0; p < values.length; p++) {
+    if (values[p] === 0 || seen[p]) continue;
+    let head = 0, tail = 1;
+    queue[0] = p;
+    seen[p] = 1;
+    while (head < tail) {
+      const q = queue[head++];
+      const x = q % w, y = Math.floor(q / w);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const r = q + dy * w + dx;
+          if (!seen[r] && values[r]) {
+            seen[r] = 1;
+            queue[tail++] = r;
+          }
+        }
+      }
+    }
+    components++;
+    if (tail < areaCutoff) {
+      for (let n = 0; n < tail; n++) values[queue[n]] = 0;
+    }
+  }
+  return { values, components };
+}
+
+function otsuThreshold(gray) {
+  const histogram = new Uint32Array(256);
+  let total = 0;
+  for (const value of gray) { histogram[value]++; total += value; }
+  let count = 0, sum = 0, best = -1, first = 0, last = 0;
+  for (let t = 0; t < 255; t++) {
+    count += histogram[t]; sum += t * histogram[t];
+    if (!count || count === gray.length) continue;
+    const delta = sum / count - (total - sum) / (gray.length - count);
+    const score = count * (gray.length - count) * delta * delta;
+    if (score > best) { best = score; first = last = t; }
+    else if (score === best) last = t;
+  }
+  // Center a tied plateau: binary ink stays stable under small offset changes.
+  return best < 0 ? 127 : Math.floor((first + last) / 2);
+}
+
+function vectorMask(gray, width, height, options) {
+  if (gray.length !== width * height) throw new Error('Invalid raster dimensions');
+  const automatic = otsuThreshold(gray);
+  const threshold = Math.max(0, Math.min(254, Math.round((options.auto ? automatic : options.threshold) + options.offset)));
+  const mask = Uint8Array.from(gray, value => value <= threshold ? 1 : 0);
+  jsSpeckFilter(mask, width, height, options.speck);
+  let ink = 0, left = width, top = height, right = -1, bottom = -1;
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue;
+    ink++;
+    const x = i % width, y = Math.floor(i / width);
+    left = Math.min(left, x); right = Math.max(right, x);
+    top = Math.min(top, y); bottom = Math.max(bottom, y);
+  }
+  if (!ink) return { empty: true, automatic, threshold };
+  // One white pixel around the bitmap gives the tracer a background boundary.
+  const w = right - left + 3, h = bottom - top + 3;
+  const data = new Uint8ClampedArray(w * h * 4).fill(255);
+  for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) {
+    if (!mask[y * width + x]) continue;
+    const p = ((y - top + 1) * w + x - left + 1) * 4;
+    data[p] = data[p + 1] = data[p + 2] = 0;
+  }
+  return { data, width: w, height: h, left: left - 1, top: top - 1,
+    automatic, threshold, ink, coverage: ink / ((right - left + 1) * (bottom - top + 1)) };
+}
+
+// Potrace 0.5.1 path-only output uses M/m, L/l, C/c and z in tenths of a
+// pixel with Y pointing up. Measure actual cubic extrema, not control points.
+function traceBounds(paths, emit = () => {}) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, count = 0;
+  function point(x, y) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+  function extrema(p0, p1, p2, p3) {
+    const a = -p0 + 3*p1 - 3*p2 + p3, b = 2*(p0 - 2*p1 + p2), c = p1 - p0;
+    if (Math.abs(a) < 1e-12) return Math.abs(b) < 1e-12 ? [] : [-c / b];
+    const d = b*b - 4*a*c;
+    return d < 0 ? [] : [(-b + Math.sqrt(d))/(2*a), (-b - Math.sqrt(d))/(2*a)];
+  }
+  const cubic = (a,b,c,d,t) => (1-t)**3*a + 3*(1-t)**2*t*b + 3*(1-t)*t*t*c + t**3*d;
+  for (const path of paths) {
+    if (!/^[MmLlCcZz0-9eE+.,\s-]+$/.test(path)) throw new Error('Unexpected trace path');
+    const tokens = path.match(/[MmLlCcZz]|[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:[eE][-+]?\d+)?/g) || [];
+    let i = 0, command = '', x = 0, y = 0, sx = 0, sy = 0, open = false;
+    while (i < tokens.length) {
+      if (/^[MmLlCcZz]$/.test(tokens[i])) command = tokens[i++];
+      const upper = command.toUpperCase(), relative = command !== upper;
+      if (upper === 'Z') { if (!open) throw new Error('Unexpected path close'); point(sx, sy); emit('h', []); x = sx; y = sy; open = false; command = ''; continue; }
+      if (!['M','L','C'].includes(upper)) throw new Error('Unsupported path command');
+      const n = upper === 'C' ? 6 : 2, values = tokens.slice(i, i+n).map(Number);
+      if (values.length !== n || values.some(v => !Number.isFinite(v))) throw new Error('Invalid path coordinates');
+      i += n;
+      for (let j = 0; j < n; j += 2) { values[j] += relative ? x : 0; values[j+1] += relative ? y : 0; }
+      if (upper === 'M') { if (open) throw new Error('Unclosed trace path'); sx = values[0]; sy = values[1]; open = true; count++; command = relative ? 'l' : 'L'; }
+      else if (!open) throw new Error('Path must start with a move');
+      if (upper === 'C') {
+        const [x1,y1,x2,y2,x3,y3] = values;
+        for (const t of [...extrema(x,x1,x2,x3), ...extrema(y,y1,y2,y3)]) {
+          if (t > 0 && t < 1) point(cubic(x,x1,x2,x3,t), cubic(y,y1,y2,y3,t));
+        }
+      }
+      emit(upper.toLowerCase(), values);
+      x = values[n-2]; y = values[n-1]; point(x,y);
+    }
+    if (open) throw new Error('Unclosed trace path');
+  }
+  if (!count || maxX <= minX || maxY <= minY) throw new Error('No paths remain. Lower the trace speck size or change threshold.');
+  return { minX, minY, maxX, maxY, count };
+}
+
+function assembleVectorSVG(paths, traceHeight, dpi, color) {
+  if (!Number.isFinite(dpi) || dpi <= 0 || !/^#[0-9a-f]{6}$/i.test(color)) throw new Error('Invalid vector size or ink colour');
+  const b = traceBounds(paths);
+  const bounds = { x: b.minX/10, y: traceHeight-b.maxY/10, width: (b.maxX-b.minX)/10, height: (b.maxY-b.minY)/10 };
+  const number = n => Number(n.toFixed(8)).toString();
+  // One even-odd path preserves holes across all contours.
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + number(bounds.width/dpi*25.4) + 'mm" height="' + number(bounds.height/dpi*25.4) + 'mm" viewBox="' + [bounds.x,bounds.y,bounds.width,bounds.height].map(number).join(' ') + '"><g transform="translate(0 ' + traceHeight + ') scale(0.1 -0.1)"><path fill="' + color + '" fill-rule="evenodd" stroke="none" d="' + paths.join(' ') + '"/></g></svg>';
+  return { svg, bounds, pathCount: b.count };
+}
+
+// ASCII-only PDF: string lengths equal byte offsets, including stream length.
+// Potrace and PDF both point Y up; translate the tight bounds to the page origin.
+function assembleVectorPDF(paths, dpi, color, background = 'transparent') {
+  if (!Number.isFinite(dpi) || dpi <= 0 || !/^#[0-9a-f]{6}$/i.test(color) ||
+      !['transparent', 'white'].includes(background)) throw new Error('Invalid PDF size, ink colour or background');
+  const commands = [];
+  const number = n => {
+    if (!Number.isFinite(n) || Math.abs(n) >= 1e21) throw new Error('PDF coordinate out of range');
+    return n.toFixed(8).replace(/\.?0+$/, '') || '0';
+  };
+  const b = traceBounds(paths, (op, values) => commands.push(values.map(number).concat(op).join(' ')));
+  const scale = 72 / (10 * dpi);
+  const width = (b.maxX-b.minX)*scale, height = (b.maxY-b.minY)*scale;
+  const box = [0, 0, width, height].map(number).join(' ');
+  if (+number(width) <= 0 || +number(height) <= 0 || +number(scale) <= 0) throw new Error('PDF page is too small');
+  const rgb = [1,3,5].map(i => number(parseInt(color.slice(i,i+2),16)/255)).join(' ');
+  const stream = 'q\n' + (background === 'white' ? '1 1 1 rg\n' + box + ' re f\n' : '') +
+    rgb + ' rg\n' + [scale,0,0,scale,-b.minX*scale,-b.minY*scale].map(number).join(' ') +
+    ' cm\n' + commands.join('\n') + '\nf*\nQ\n';
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [' + box + '] /Resources << >> /Contents 4 0 R >>',
+    '<< /Length ' + stream.length + ' >>\nstream\n' + stream + 'endstream'
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((object, i) => { offsets.push(pdf.length); pdf += (i+1) + ' 0 obj\n' + object + '\nendobj\n'; });
+  const xref = pdf.length;
+  pdf += 'xref\n0 5\n0000000000 65535 f \n' + offsets.slice(1).map(offset => String(offset).padStart(10,'0') + ' 00000 n \n').join('') +
+    'trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+  return pdf;
+}
+
+// Maximum chord deviation in full-resolution cleaned source pixels.
+const DXF_FLATTEN_TOLERANCE = 0.05;
+function flattenVectorContours(paths) {
+  const loops = [];
+  let loop, current;
+  const midpoint = (a,b) => [(a[0]+b[0])/2, (a[1]+b[1])/2];
+  function distance(p,a,b) {
+    const dx = b[0]-a[0], dy = b[1]-a[1], length = dx*dx+dy*dy;
+    const t = length ? Math.max(0, Math.min(1, ((p[0]-a[0])*dx+(p[1]-a[1])*dy)/length)) : 0;
+    return Math.hypot(p[0]-a[0]-t*dx, p[1]-a[1]-t*dy);
+  }
+  function cubic(a,b,c,d) {
+    // The Bezier convex hull lies within this distance of the finite chord.
+    // Finite-segment distance also catches collinear reversals and closed cusps.
+    if (Math.max(distance(b,a,d), distance(c,a,d)) <= DXF_FLATTEN_TOLERANCE*10) {
+      loop.push(d); return;
+    }
+    const ab = midpoint(a,b), bc = midpoint(b,c), cd = midpoint(c,d);
+    const abc = midpoint(ab,bc), bcd = midpoint(bc,cd), mid = midpoint(abc,bcd);
+    cubic(a,ab,abc,mid); cubic(mid,bcd,cd,d);
+  }
+  traceBounds(paths, (op,v) => {
+    if (op === 'm') { loop = [v]; loops.push(loop); current = v; }
+    if (op === 'l') { loop.push(v); current = v; }
+    if (op === 'c') { const end = v.slice(4); cubic(current,v.slice(0,2),v.slice(2,4),end); current = end; }
+    if (op === 'h' && loop.length > 1 && loop.at(-1).every((v,i) => v === loop[0][i])) loop.pop();
+  });
+  return loops;
+}
+
+// Empty AC1018 scaffold generated with ezdxf 1.4.4; handles below 1000 are reserved.
+const DXF_PREFIX = "  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1018\n  9\n$ACADMAINTVER\n 70\n0\n  9\n$DWGCODEPAGE\n  3\nANSI_1252\n  9\n$LASTSAVEDBY\n  1\nezdxf\n  9\n$INSBASE\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$EXTMIN\n 10\n1e+20\n 20\n1e+20\n 30\n1e+20\n  9\n$EXTMAX\n 10\n-1e+20\n 20\n-1e+20\n 30\n-1e+20\n  9\n$LIMMIN\n 10\n0.0\n 20\n0.0\n  9\n$LIMMAX\n 10\n420.0\n 20\n297.0\n  9\n$ORTHOMODE\n 70\n0\n  9\n$REGENMODE\n 70\n1\n  9\n$FILLMODE\n 70\n1\n  9\n$QTEXTMODE\n 70\n0\n  9\n$MIRRTEXT\n 70\n1\n  9\n$LTSCALE\n 40\n1.0\n  9\n$ATTMODE\n 70\n1\n  9\n$TEXTSIZE\n 40\n2.5\n  9\n$TRACEWID\n 40\n1.0\n  9\n$TEXTSTYLE\n  7\nStandard\n  9\n$CLAYER\n  8\n0\n  9\n$CELTYPE\n  6\nByLayer\n  9\n$CECOLOR\n 62\n256\n  9\n$CELTSCALE\n 40\n1.0\n  9\n$DISPSILH\n 70\n0\n  9\n$DIMSCALE\n 40\n1.0\n  9\n$DIMASZ\n 40\n2.5\n  9\n$DIMEXO\n 40\n0.625\n  9\n$DIMDLI\n 40\n3.75\n  9\n$DIMRND\n 40\n0.0\n  9\n$DIMDLE\n 40\n0.0\n  9\n$DIMEXE\n 40\n1.25\n  9\n$DIMTP\n 40\n0.0\n  9\n$DIMTM\n 40\n0.0\n  9\n$DIMTXT\n 40\n2.5\n  9\n$DIMCEN\n 40\n2.5\n  9\n$DIMTSZ\n 40\n0.0\n  9\n$DIMTOL\n 70\n0\n  9\n$DIMLIM\n 70\n0\n  9\n$DIMTIH\n 70\n0\n  9\n$DIMTOH\n 70\n0\n  9\n$DIMSE1\n 70\n0\n  9\n$DIMSE2\n 70\n0\n  9\n$DIMTAD\n 70\n1\n  9\n$DIMZIN\n 70\n8\n  9\n$DIMBLK\n  1\n\n  9\n$DIMASO\n 70\n1\n  9\n$DIMSHO\n 70\n1\n  9\n$DIMPOST\n  1\n\n  9\n$DIMAPOST\n  1\n\n  9\n$DIMALT\n 70\n0\n  9\n$DIMALTD\n 70\n3\n  9\n$DIMALTF\n 40\n0.03937007874\n  9\n$DIMLFAC\n 40\n1.0\n  9\n$DIMTOFL\n 70\n1\n  9\n$DIMTVP\n 40\n0.0\n  9\n$DIMTIX\n 70\n0\n  9\n$DIMSOXD\n 70\n0\n  9\n$DIMSAH\n 70\n0\n  9\n$DIMBLK1\n  1\n\n  9\n$DIMBLK2\n  1\n\n  9\n$DIMSTYLE\n  2\nISO-25\n  9\n$DIMCLRD\n 70\n0\n  9\n$DIMCLRE\n 70\n0\n  9\n$DIMCLRT\n 70\n0\n  9\n$DIMTFAC\n 40\n1.0\n  9\n$DIMGAP\n 40\n0.625\n  9\n$DIMJUST\n 70\n0\n  9\n$DIMSD1\n 70\n0\n  9\n$DIMSD2\n 70\n0\n  9\n$DIMTOLJ\n 70\n0\n  9\n$DIMTZIN\n 70\n8\n  9\n$DIMALTZ\n 70\n0\n  9\n$DIMALTTZ\n 70\n0\n  9\n$DIMUPT\n 70\n0\n  9\n$DIMDEC\n 70\n2\n  9\n$DIMTDEC\n 70\n2\n  9\n$DIMALTU\n 70\n2\n  9\n$DIMALTTD\n 70\n3\n  9\n$DIMTXSTY\n  7\nStandard\n  9\n$DIMAUNIT\n 70\n0\n  9\n$DIMADEC\n 70\n0\n  9\n$DIMALTRND\n 40\n0.0\n  9\n$DIMAZIN\n 70\n0\n  9\n$DIMDSEP\n 70\n44\n  9\n$DIMATFIT\n 70\n3\n  9\n$DIMFRAC\n 70\n0\n  9\n$DIMLDRBLK\n  1\n\n  9\n$DIMLUNIT\n 70\n2\n  9\n$DIMLWD\n 70\n-2\n  9\n$DIMLWE\n 70\n-2\n  9\n$DIMTMOVE\n 70\n0\n  9\n$LUNITS\n 70\n2\n  9\n$LUPREC\n 70\n4\n  9\n$SKETCHINC\n 40\n1.0\n  9\n$FILLETRAD\n 40\n10.0\n  9\n$AUNITS\n 70\n0\n  9\n$AUPREC\n 70\n2\n  9\n$MENU\n  1\n.\n  9\n$ELEVATION\n 40\n0.0\n  9\n$PELEVATION\n 40\n0.0\n  9\n$THICKNESS\n 40\n0.0\n  9\n$LIMCHECK\n 70\n0\n  9\n$CHAMFERA\n 40\n0.0\n  9\n$CHAMFERB\n 40\n0.0\n  9\n$CHAMFERC\n 40\n0.0\n  9\n$CHAMFERD\n 40\n0.0\n  9\n$SKPOLY\n 70\n0\n  9\n$TDCREATE\n 40\n2451544.5\n  9\n$TDUCREATE\n 40\n2458532.153996898\n  9\n$TDUPDATE\n 40\n2461321.5649305554\n  9\n$TDUUPDATE\n 40\n2458532.1544311\n  9\n$TDINDWG\n 40\n0.0\n  9\n$TDUSRTIMER\n 40\n0.0\n  9\n$USRTIMER\n 70\n1\n  9\n$ANGBASE\n 50\n0.0\n  9\n$ANGDIR\n 70\n0\n  9\n$PDMODE\n 70\n0\n  9\n$PDSIZE\n 40\n0.0\n  9\n$PLINEWID\n 40\n0.0\n  9\n$SPLFRAME\n 70\n0\n  9\n$SPLINETYPE\n 70\n6\n  9\n$SPLINESEGS\n 70\n8\n  9\n$HANDSEED\n  5\n1001\n  9\n$SURFTAB1\n 70\n6\n  9\n$SURFTAB2\n 70\n6\n  9\n$SURFTYPE\n 70\n6\n  9\n$SURFU\n 70\n6\n  9\n$SURFV\n 70\n6\n  9\n$UCSBASE\n  2\n\n  9\n$UCSNAME\n  2\n\n  9\n$UCSORG\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$UCSXDIR\n 10\n1.0\n 20\n0.0\n 30\n0.0\n  9\n$UCSYDIR\n 10\n0.0\n 20\n1.0\n 30\n0.0\n  9\n$UCSORTHOREF\n  2\n\n  9\n$UCSORTHOVIEW\n 70\n0\n  9\n$UCSORGTOP\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$UCSORGBOTTOM\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$UCSORGLEFT\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$UCSORGRIGHT\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$UCSORGFRONT\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$UCSORGBACK\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$PUCSBASE\n  2\n\n  9\n$PUCSNAME\n  2\n\n  9\n$PUCSORG\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$PUCSXDIR\n 10\n1.0\n 20\n0.0\n 30\n0.0\n  9\n$PUCSYDIR\n 10\n0.0\n 20\n1.0\n 30\n0.0\n  9\n$PUCSORTHOREF\n  2\n\n  9\n$PUCSORTHOVIEW\n 70\n0\n  9\n$PUCSORGTOP\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$PUCSORGBOTTOM\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$PUCSORGLEFT\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$PUCSORGRIGHT\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$PUCSORGFRONT\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$PUCSORGBACK\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$USERI1\n 70\n0\n  9\n$USERI2\n 70\n0\n  9\n$USERI3\n 70\n0\n  9\n$USERI4\n 70\n0\n  9\n$USERI5\n 70\n0\n  9\n$USERR1\n 40\n0.0\n  9\n$USERR2\n 40\n0.0\n  9\n$USERR3\n 40\n0.0\n  9\n$USERR4\n 40\n0.0\n  9\n$USERR5\n 40\n0.0\n  9\n$WORLDVIEW\n 70\n1\n  9\n$SHADEDGE\n 70\n3\n  9\n$SHADEDIF\n 70\n70\n  9\n$TILEMODE\n 70\n1\n  9\n$MAXACTVP\n 70\n64\n  9\n$PINSBASE\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  9\n$PLIMCHECK\n 70\n0\n  9\n$PEXTMIN\n 10\n1e+20\n 20\n1e+20\n 30\n1e+20\n  9\n$PEXTMAX\n 10\n-1e+20\n 20\n-1e+20\n 30\n-1e+20\n  9\n$PLIMMIN\n 10\n0.0\n 20\n0.0\n  9\n$PLIMMAX\n 10\n420.0\n 20\n297.0\n  9\n$UNITMODE\n 70\n0\n  9\n$VISRETAIN\n 70\n1\n  9\n$PLINEGEN\n 70\n0\n  9\n$PSLTSCALE\n 70\n1\n  9\n$TREEDEPTH\n 70\n3020\n  9\n$CMLSTYLE\n  2\nStandard\n  9\n$CMLJUST\n 70\n0\n  9\n$CMLSCALE\n 40\n20.0\n  9\n$PROXYGRAPHICS\n 70\n1\n  9\n$MEASUREMENT\n 70\n1\n  9\n$CELWEIGHT\n370\n-1\n  9\n$ENDCAPS\n280\n0\n  9\n$JOINSTYLE\n280\n0\n  9\n$LWDISPLAY\n290\n0\n  9\n$INSUNITS\n 70\n4\n  9\n$HYPERLINKBASE\n  1\n\n  9\n$STYLESHEET\n  1\n\n  9\n$XEDIT\n290\n1\n  9\n$CEPSNTYPE\n380\n0\n  9\n$PSTYLEMODE\n290\n1\n  9\n$FINGERPRINTGUID\n  2\n{B53BBA9D-CBD4-4D0B-8B15-B7583E4B7FF4}\n  9\n$VERSIONGUID\n  2\n{2B833B6B-CF79-4334-8478-C927C166F64D}\n  9\n$EXTNAMES\n290\n1\n  9\n$PSVPSCALE\n 40\n0.0\n  9\n$OLESTARTUP\n290\n0\n  9\n$SORTENTS\n280\n127\n  9\n$INDEXCTL\n280\n0\n  9\n$HIDETEXT\n280\n1\n  9\n$XCLIPFRAME\n290\n1\n  9\n$HALOGAP\n280\n0\n  9\n$OBSCOLOR\n 70\n257\n  9\n$OBSLTYPE\n280\n0\n  9\n$INTERSECTIONDISPLAY\n280\n0\n  9\n$INTERSECTIONCOLOR\n 70\n257\n  9\n$DIMASSOC\n280\n2\n  9\n$PROJECTNAME\n  1\n\n  0\nENDSEC\n  0\nSECTION\n  2\nCLASSES\n  0\nCLASS\n  1\nACDBDICTIONARYWDFLT\n  2\nAcDbDictionaryWithDefault\n  3\nObjectDBX Classes\n 90\n0\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nSUN\n  2\nAcDbSun\n  3\nSCENEOE\n 90\n1153\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nVISUALSTYLE\n  2\nAcDbVisualStyle\n  3\nObjectDBX Classes\n 90\n4095\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nMATERIAL\n  2\nAcDbMaterial\n  3\nObjectDBX Classes\n 90\n1153\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nSCALE\n  2\nAcDbScale\n  3\nObjectDBX Classes\n 90\n1153\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nTABLESTYLE\n  2\nAcDbTableStyle\n  3\nObjectDBX Classes\n 90\n4095\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nMLEADERSTYLE\n  2\nAcDbMLeaderStyle\n  3\nACDB_MLEADERSTYLE_CLASS\n 90\n4095\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nDICTIONARYVAR\n  2\nAcDbDictionaryVar\n  3\nObjectDBX Classes\n 90\n0\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nCELLSTYLEMAP\n  2\nAcDbCellStyleMap\n  3\nObjectDBX Classes\n 90\n1152\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nMENTALRAYRENDERSETTINGS\n  2\nAcDbMentalRayRenderSettings\n  3\nSCENEOE\n 90\n1024\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nACDBDETAILVIEWSTYLE\n  2\nAcDbDetailViewStyle\n  3\nObjectDBX Classes\n 90\n1025\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nACDBSECTIONVIEWSTYLE\n  2\nAcDbSectionViewStyle\n  3\nObjectDBX Classes\n 90\n1025\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nRASTERVARIABLES\n  2\nAcDbRasterVariables\n  3\nISM\n 90\n0\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nACDBPLACEHOLDER\n  2\nAcDbPlaceHolder\n  3\nObjectDBX Classes\n 90\n0\n 91\n0\n280\n0\n281\n0\n  0\nCLASS\n  1\nLAYOUT\n  2\nAcDbLayout\n  3\nObjectDBX Classes\n 90\n0\n 91\n0\n280\n0\n281\n0\n  0\nENDSEC\n  0\nSECTION\n  2\nTABLES\n  0\nTABLE\n  2\nVPORT\n  5\n8\n330\n0\n100\nAcDbSymbolTable\n 70\n1\n  0\nVPORT\n  5\n23\n330\n8\n100\nAcDbSymbolTableRecord\n100\nAcDbViewportTableRecord\n  2\n*Active\n 70\n0\n 10\n0.0\n 20\n0.0\n 11\n1.0\n 21\n1.0\n 12\n0.0\n 22\n0.0\n 13\n0.0\n 23\n0.0\n 14\n0.5\n 24\n0.5\n 15\n0.5\n 25\n0.5\n 16\n0.0\n 26\n0.0\n 36\n1.0\n 17\n0.0\n 27\n0.0\n 37\n0.0\n 40\n1000.0\n 41\n1.34\n 42\n50.0\n 43\n0.0\n 44\n0.0\n 50\n0.0\n 51\n0.0\n 71\n0\n 72\n1000\n 73\n1\n 74\n3\n 75\n0\n 76\n0\n 77\n0\n 78\n0\n281\n0\n 65\n0\n146\n0.0\n  0\nENDTAB\n  0\nTABLE\n  2\nLTYPE\n  5\n2\n330\n0\n100\nAcDbSymbolTable\n 70\n3\n  0\nLTYPE\n  5\n24\n330\n2\n100\nAcDbSymbolTableRecord\n100\nAcDbLinetypeTableRecord\n  2\nByBlock\n 70\n0\n  3\n\n 72\n65\n 73\n0\n 40\n0.0\n  0\nLTYPE\n  5\n25\n330\n2\n100\nAcDbSymbolTableRecord\n100\nAcDbLinetypeTableRecord\n  2\nByLayer\n 70\n0\n  3\n\n 72\n65\n 73\n0\n 40\n0.0\n  0\nLTYPE\n  5\n26\n330\n2\n100\nAcDbSymbolTableRecord\n100\nAcDbLinetypeTableRecord\n  2\nContinuous\n 70\n0\n  3\n\n 72\n65\n 73\n0\n 40\n0.0\n  0\nENDTAB\n  0\nTABLE\n  2\nLAYER\n  5\n1\n330\n0\n100\nAcDbSymbolTable\n 70\n3\n  0\nLAYER\n  5\n27\n330\n1\n100\nAcDbSymbolTableRecord\n100\nAcDbLayerTableRecord\n  2\n0\n 70\n0\n 62\n7\n  6\nContinuous\n370\n-3\n390\n13\n  0\nLAYER\n  5\n28\n330\n1\n100\nAcDbSymbolTableRecord\n100\nAcDbLayerTableRecord\n  2\nDefpoints\n 70\n0\n 62\n7\n  6\nContinuous\n290\n0\n370\n-3\n390\n13\n  0\nLAYER\n  5\n2F\n330\n1\n100\nAcDbSymbolTableRecord\n100\nAcDbLayerTableRecord\n  2\nINK\n 70\n0\n 62\n7\n  6\nContinuous\n370\n-3\n390\n13\n  0\nENDTAB\n  0\nTABLE\n  2\nSTYLE\n  5\n5\n330\n0\n100\nAcDbSymbolTable\n 70\n1\n  0\nSTYLE\n  5\n29\n330\n5\n100\nAcDbSymbolTableRecord\n100\nAcDbTextStyleTableRecord\n  2\nStandard\n 70\n0\n 40\n0.0\n 41\n1.0\n 50\n0.0\n 71\n0\n 42\n2.5\n  3\ntxt\n  4\n\n  0\nENDTAB\n  0\nTABLE\n  2\nVIEW\n  5\n7\n330\n0\n100\nAcDbSymbolTable\n 70\n0\n  0\nENDTAB\n  0\nTABLE\n  2\nUCS\n  5\n6\n330\n0\n100\nAcDbSymbolTable\n 70\n0\n  0\nENDTAB\n  0\nTABLE\n  2\nAPPID\n  5\n3\n330\n0\n100\nAcDbSymbolTable\n 70\n3\n  0\nAPPID\n  5\n2A\n330\n3\n100\nAcDbSymbolTableRecord\n100\nAcDbRegAppTableRecord\n  2\nACAD\n 70\n0\n  0\nAPPID\n  5\n30\n330\n3\n100\nAcDbSymbolTableRecord\n100\nAcDbRegAppTableRecord\n  2\nHATCHBACKGROUNDCOLOR\n 70\n0\n  0\nAPPID\n  5\n31\n330\n3\n100\nAcDbSymbolTableRecord\n100\nAcDbRegAppTableRecord\n  2\nEZDXF\n 70\n0\n  0\nENDTAB\n  0\nTABLE\n  2\nDIMSTYLE\n  5\n4\n330\n0\n100\nAcDbSymbolTable\n 70\n1\n100\nAcDbDimStyleTable\n  0\nDIMSTYLE\n105\n2B\n330\n4\n100\nAcDbSymbolTableRecord\n100\nAcDbDimStyleTableRecord\n  2\nStandard\n 70\n0\n  3\n\n  4\n\n 40\n1.0\n 41\n2.5\n 42\n0.625\n 43\n3.75\n 44\n1.25\n 45\n0.0\n 46\n0.0\n 47\n0.0\n 48\n0.0\n140\n2.5\n141\n2.5\n142\n0.0\n143\n0.03937007874\n144\n1.0\n145\n0.0\n146\n1.0\n147\n0.625\n148\n0.0\n 71\n0\n 72\n0\n 73\n0\n 74\n0\n 75\n0\n 76\n0\n 77\n1\n 78\n8\n 79\n3\n170\n0\n171\n3\n172\n1\n173\n0\n174\n0\n175\n0\n176\n0\n177\n0\n178\n0\n179\n2\n271\n2\n272\n2\n273\n2\n274\n3\n275\n0\n276\n0\n277\n2\n278\n44\n279\n0\n280\n0\n281\n0\n282\n0\n283\n0\n284\n8\n285\n0\n286\n0\n288\n0\n289\n3\n371\n-2\n372\n-2\n  0\nENDTAB\n  0\nTABLE\n  2\nBLOCK_RECORD\n  5\n9\n330\n0\n100\nAcDbSymbolTable\n 70\n2\n  0\nBLOCK_RECORD\n  5\n17\n330\n9\n100\nAcDbSymbolTableRecord\n100\nAcDbBlockTableRecord\n  2\n*Model_Space\n340\n1A\n  0\nBLOCK_RECORD\n  5\n1B\n330\n9\n100\nAcDbSymbolTableRecord\n100\nAcDbBlockTableRecord\n  2\n*Paper_Space\n340\n1E\n  0\nENDTAB\n  0\nENDSEC\n  0\nSECTION\n  2\nBLOCKS\n  0\nBLOCK\n  5\n18\n330\n17\n100\nAcDbEntity\n  8\n0\n100\nAcDbBlockBegin\n  2\n*Model_Space\n 70\n0\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  3\n*Model_Space\n  1\n\n  0\nENDBLK\n  5\n19\n330\n17\n100\nAcDbEntity\n  8\n0\n100\nAcDbBlockEnd\n  0\nBLOCK\n  5\n1C\n330\n1B\n100\nAcDbEntity\n  8\n0\n100\nAcDbBlockBegin\n  2\n*Paper_Space\n 70\n0\n 10\n0.0\n 20\n0.0\n 30\n0.0\n  3\n*Paper_Space\n  1\n\n  0\nENDBLK\n  5\n1D\n330\n1B\n100\nAcDbEntity\n  8\n0\n100\nAcDbBlockEnd\n  0\nENDSEC\n  0\nSECTION\n  2\nENTITIES\n";
+const DXF_SUFFIX = "  0\nENDSEC\n  0\nSECTION\n  2\nOBJECTS\n  0\nDICTIONARY\n  5\nA\n330\n0\n100\nAcDbDictionary\n281\n1\n  3\nACAD_COLOR\n350\nB\n  3\nACAD_GROUP\n350\nC\n  3\nACAD_LAYOUT\n350\nD\n  3\nACAD_MATERIAL\n350\nE\n  3\nACAD_MLEADERSTYLE\n350\nF\n  3\nACAD_MLINESTYLE\n350\n10\n  3\nACAD_PLOTSETTINGS\n350\n11\n  3\nACAD_PLOTSTYLENAME\n350\n12\n  3\nACAD_SCALELIST\n350\n14\n  3\nACAD_TABLESTYLE\n350\n15\n  3\nACAD_VISUALSTYLE\n350\n16\n  3\nEZDXF_META\n350\n2D\n  0\nDICTIONARY\n  5\nB\n330\nA\n100\nAcDbDictionary\n281\n1\n  0\nDICTIONARY\n  5\nC\n330\nA\n100\nAcDbDictionary\n281\n1\n  0\nDICTIONARY\n  5\nD\n330\nA\n100\nAcDbDictionary\n281\n1\n  3\nModel\n350\n1A\n  3\nLayout1\n350\n1E\n  0\nDICTIONARY\n  5\nE\n330\nA\n100\nAcDbDictionary\n281\n1\n  3\nByBlock\n350\n1F\n  3\nByLayer\n350\n20\n  3\nGlobal\n350\n21\n  0\nDICTIONARY\n  5\nF\n330\nA\n100\nAcDbDictionary\n281\n1\n  3\nStandard\n350\n2C\n  0\nDICTIONARY\n  5\n10\n330\nA\n100\nAcDbDictionary\n281\n1\n  3\nStandard\n350\n22\n  0\nDICTIONARY\n  5\n11\n330\nA\n100\nAcDbDictionary\n281\n1\n  0\nACDBDICTIONARYWDFLT\n  5\n12\n330\nA\n100\nAcDbDictionary\n281\n1\n  3\nNormal\n350\n13\n100\nAcDbDictionaryWithDefault\n340\n13\n  0\nACDBPLACEHOLDER\n  5\n13\n330\n12\n  0\nDICTIONARY\n  5\n14\n330\nA\n100\nAcDbDictionary\n281\n1\n  0\nDICTIONARY\n  5\n15\n330\nA\n100\nAcDbDictionary\n281\n1\n  0\nDICTIONARY\n  5\n16\n330\nA\n100\nAcDbDictionary\n281\n1\n  0\nLAYOUT\n  5\n1A\n330\nD\n100\nAcDbPlotSettings\n  1\n\n  4\nA3\n  6\n\n 40\n7.5\n 41\n20.0\n 42\n7.5\n 43\n20.0\n 44\n420.0\n 45\n297.0\n 46\n0.0\n 47\n0.0\n 48\n0.0\n 49\n0.0\n140\n0.0\n141\n0.0\n142\n1.0\n143\n1.0\n 70\n1024\n 72\n1\n 73\n0\n 74\n5\n  7\n\n 75\n16\n 76\n0\n 77\n2\n 78\n300\n147\n1.0\n148\n0.0\n149\n0.0\n100\nAcDbLayout\n  1\nModel\n 70\n1\n 71\n0\n 10\n0.0\n 20\n0.0\n 11\n420.0\n 21\n297.0\n 12\n0.0\n 22\n0.0\n 32\n0.0\n 14\n1e+20\n 24\n1e+20\n 34\n1e+20\n 15\n-1e+20\n 25\n-1e+20\n 35\n-1e+20\n146\n0.0\n 13\n0.0\n 23\n0.0\n 33\n0.0\n 16\n1.0\n 26\n0.0\n 36\n0.0\n 17\n0.0\n 27\n1.0\n 37\n0.0\n 76\n1\n330\n17\n  0\nLAYOUT\n  5\n1E\n330\nD\n100\nAcDbPlotSettings\n  1\n\n  4\nA3\n  6\n\n 40\n7.5\n 41\n20.0\n 42\n7.5\n 43\n20.0\n 44\n420.0\n 45\n297.0\n 46\n0.0\n 47\n0.0\n 48\n0.0\n 49\n0.0\n140\n0.0\n141\n0.0\n142\n1.0\n143\n1.0\n 70\n0\n 72\n1\n 73\n0\n 74\n5\n  7\n\n 75\n16\n 76\n0\n 77\n2\n 78\n300\n147\n1.0\n148\n0.0\n149\n0.0\n100\nAcDbLayout\n  1\nLayout1\n 70\n1\n 71\n1\n 10\n0.0\n 20\n0.0\n 11\n420.0\n 21\n297.0\n 12\n0.0\n 22\n0.0\n 32\n0.0\n 14\n1e+20\n 24\n1e+20\n 34\n1e+20\n 15\n-1e+20\n 25\n-1e+20\n 35\n-1e+20\n146\n0.0\n 13\n0.0\n 23\n0.0\n 33\n0.0\n 16\n1.0\n 26\n0.0\n 36\n0.0\n 17\n0.0\n 27\n1.0\n 37\n0.0\n 76\n1\n330\n1B\n  0\nMATERIAL\n  5\n1F\n102\n{ACAD_REACTORS\n330\nE\n102\n}\n330\nE\n100\nAcDbMaterial\n  1\nByBlock\n  2\n\n 70\n0\n 40\n1.0\n 71\n1\n 41\n1.0\n 91\n-1023410177\n 42\n1.0\n 72\n1\n  3\n\n 73\n1\n 74\n1\n 75\n1\n 44\n0.5\n 73\n0\n 45\n1.0\n 46\n1.0\n 77\n1\n  4\n\n 78\n1\n 79\n1\n170\n1\n 48\n1.0\n171\n1\n  6\n\n172\n1\n173\n1\n174\n1\n140\n1.0\n141\n1.0\n175\n1\n  7\n\n176\n1\n177\n1\n178\n1\n143\n1.0\n179\n1\n  8\n\n270\n1\n271\n1\n272\n1\n145\n1.0\n146\n1.0\n273\n1\n  9\n\n274\n1\n275\n1\n276\n1\n 42\n1.0\n 72\n1\n  3\n\n 73\n1\n 74\n1\n 75\n1\n 94\n63\n  0\nMATERIAL\n  5\n20\n102\n{ACAD_REACTORS\n330\nE\n102\n}\n330\nE\n100\nAcDbMaterial\n  1\nByLayer\n  2\n\n 70\n0\n 40\n1.0\n 71\n1\n 41\n1.0\n 91\n-1023410177\n 42\n1.0\n 72\n1\n  3\n\n 73\n1\n 74\n1\n 75\n1\n 44\n0.5\n 73\n0\n 45\n1.0\n 46\n1.0\n 77\n1\n  4\n\n 78\n1\n 79\n1\n170\n1\n 48\n1.0\n171\n1\n  6\n\n172\n1\n173\n1\n174\n1\n140\n1.0\n141\n1.0\n175\n1\n  7\n\n176\n1\n177\n1\n178\n1\n143\n1.0\n179\n1\n  8\n\n270\n1\n271\n1\n272\n1\n145\n1.0\n146\n1.0\n273\n1\n  9\n\n274\n1\n275\n1\n276\n1\n 42\n1.0\n 72\n1\n  3\n\n 73\n1\n 74\n1\n 75\n1\n 94\n63\n  0\nMATERIAL\n  5\n21\n102\n{ACAD_REACTORS\n330\nE\n102\n}\n330\nE\n100\nAcDbMaterial\n  1\nGlobal\n  2\n\n 70\n0\n 40\n1.0\n 71\n1\n 41\n1.0\n 91\n-1023410177\n 42\n1.0\n 72\n1\n  3\n\n 73\n1\n 74\n1\n 75\n1\n 44\n0.5\n 73\n0\n 45\n1.0\n 46\n1.0\n 77\n1\n  4\n\n 78\n1\n 79\n1\n170\n1\n 48\n1.0\n171\n1\n  6\n\n172\n1\n173\n1\n174\n1\n140\n1.0\n141\n1.0\n175\n1\n  7\n\n176\n1\n177\n1\n178\n1\n143\n1.0\n179\n1\n  8\n\n270\n1\n271\n1\n272\n1\n145\n1.0\n146\n1.0\n273\n1\n  9\n\n274\n1\n275\n1\n276\n1\n 42\n1.0\n 72\n1\n  3\n\n 73\n1\n 74\n1\n 75\n1\n 94\n63\n  0\nMLINESTYLE\n  5\n22\n102\n{ACAD_REACTORS\n330\n10\n102\n}\n330\n10\n100\nAcDbMlineStyle\n  2\nStandard\n 70\n0\n  3\n\n 62\n256\n 51\n90.0\n 52\n90.0\n 71\n2\n 49\n0.5\n 62\n256\n  6\nBYLAYER\n 49\n-0.5\n 62\n256\n  6\nBYLAYER\n  0\nMLEADERSTYLE\n  5\n2C\n102\n{ACAD_REACTORS\n330\nF\n102\n}\n330\nF\n100\nAcDbMLeaderStyle\n179\n2\n170\n2\n171\n1\n172\n0\n 90\n2\n 40\n0.0\n 41\n0.0\n173\n1\n 91\n-1056964608\n 92\n-2\n290\n1\n 42\n2.0\n291\n1\n 43\n8.0\n  3\nStandard\n 44\n4.0\n300\n\n342\n29\n174\n1\n175\n1\n176\n0\n178\n1\n 93\n-1056964608\n 45\n4.0\n292\n0\n297\n0\n 46\n4.0\n 94\n-1056964608\n 47\n1.0\n 49\n1.0\n140\n1.0\n294\n1\n141\n0.0\n177\n0\n142\n1.0\n295\n0\n296\n0\n143\n3.75\n271\n0\n272\n9\n273\n9\n  0\nDICTIONARY\n  5\n2D\n330\nA\n100\nAcDbDictionary\n280\n1\n281\n1\n  3\nCREATED_BY_EZDXF\n350\n2E\n  3\nWRITTEN_BY_EZDXF\n350\n32\n  0\nDICTIONARYVAR\n  5\n2E\n330\n2D\n100\nDictionaryVariables\n280\n0\n  1\n1.4.4 @ 2026-10-07T18:33:30.682698+00:00\n  0\nDICTIONARYVAR\n  5\n32\n330\n2D\n100\nDictionaryVariables\n280\n0\n  1\n1.4.4 @ 2026-10-07T18:33:30.683017+00:00\n  0\nENDSEC\n  0\nEOF\n";
+
+function assembleVectorDXF(paths, dpi, color) {
+  if (!Number.isFinite(dpi) || dpi <= 0 || !/^#[0-9a-f]{6}$/i.test(color)) throw new Error('Invalid DXF size or ink colour');
+  const b = traceBounds(paths), loops = flattenVectorContours(paths), scale = 25.4/(10*dpi);
+  const lines = [];
+  const pair = (code,value) => { lines.push(String(code), String(value)); };
+  const coordinate = n => {
+    if (!Number.isFinite(n) || Math.abs(n) >= 1e21) throw new Error('DXF coordinate out of range');
+    return n.toFixed(10).replace(/\.?0+$/, '') || '0';
+  };
+  pair(0,'HATCH'); pair(5,'1000'); pair(330,'17'); pair(100,'AcDbEntity'); pair(8,'INK'); pair(420,parseInt(color.slice(1),16));
+  pair(100,'AcDbHatch'); pair(10,0); pair(20,0); pair(30,0);
+  pair(210,0); pair(220,0); pair(230,1);
+  pair(2,'SOLID'); pair(70,1); pair(71,0); pair(91,loops.length);
+  for (const loop of loops) {
+    pair(92,2); pair(72,0); pair(73,1); pair(93,loop.length);
+    for (const [x,y] of loop) {
+      // Potrace is already Y-up (the SVG preview flips it to screen Y-down).
+      // Thus subtracting minY is the preview-to-CAD flip about the tight bounds.
+      pair(10,coordinate((x-b.minX)*scale)); pair(20,coordinate((y-b.minY)*scale));
+    }
+    pair(97,0);
+  }
+  pair(75,0); pair(76,1); pair(98,0);
+  return DXF_PREFIX + lines.join('\n') + '\n' + DXF_SUFFIX;
+}
+
+const VECTOR_WORKER_SOURCE = `
+let tracerPromise;
+let raster;
+let latest = 0;
+self.onmessage = async ({ data: msg }) => {
+  const id = msg.id;
+  latest = id;
+  if (msg.gray) raster = msg;
+  try {
+    const mask = vectorMask(raster.gray, raster.width, raster.height, msg.options);
+    if (mask.empty) { self.postMessage({id,type:'vector-empty'}); return; }
+    if (!tracerPromise) tracerPromise = import('https://cdn.jsdelivr.net/npm/esm-potrace-wasm@0.5.1/dist/index.js');
+    const tracer = await tracerPromise;
+    await tracer.init();
+    if (id !== latest) return;
+    const options = msg.options;
+    const paths = await tracer.potrace({data: mask.data, width: mask.width, height: mask.height}, {
+      turdsize: options.turd, alphamax: options.corner, opticurve: options.optimize > 0 ? 1 : 0,
+      opttolerance: options.optimize, turnpolicy: 4, extractcolors: false,
+      posterizelevel: 2, posterizationalgorithm: 0, pathonly: true
+    });
+    if (id !== latest) return;
+    if (!paths.length) { self.postMessage({id,type:'vector-empty'}); return; }
+    self.postMessage({ id, type: 'vector-done', paths, traceHeight: mask.height,
+      left: mask.left, top: mask.top, automatic: mask.automatic, threshold: mask.threshold,
+      coverage: mask.coverage, ink: mask.ink });
+  } catch (error) {
+    tracerPromise = null;
+    self.postMessage({ id, type: 'vector-error', error: String(error.message || error) });
+  }
+};
+`;
+
+// ─── Worker source (built as a Blob) ─────────────────────────
+const WORKER_SOURCE = `
+const MAGICK_WASM_URL = 'https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.43/dist/x86/magick.wasm';
+const MAGICK_UMD_URL = 'https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.43/dist/index.umd.cjs';
+
+let M = null;
+let enginePromise = null;
+
+function initEngine() {
+  if (!enginePromise) enginePromise = loadEngine();
+  return enginePromise;
+}
+
+async function loadEngine() {
+  // jsDelivr serves .cjs as application/node with nosniff, so importScripts
+  // rejects the URL directly; re-wrap the text as a JavaScript Blob.
+  const umdText = await (await fetch(MAGICK_UMD_URL)).text();
+  importScripts(URL.createObjectURL(new Blob([umdText], { type: 'application/javascript' })));
+  M = self['magick-wasm'];
+  const wasmResp = await fetch(MAGICK_WASM_URL);
+  const wasmBuf = await wasmResp.arrayBuffer();
+  await M.initializeImageMagick(new Uint8Array(wasmBuf));
+  return M;
+}
+
+${jsSpeckFilter.toString()}
+
+// Aliasing guard: compute on the real 8-bit array
+function computeGuard(values, w, h, background = 255) {
+  let band = 0, gray = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      let lo = 255, hi = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          let v;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) v = background;
+          else v = values[ny * w + nx];
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+      }
+      if (lo < 128 && hi >= 128) {
+        band++;
+        if (values[p] >= 8 && values[p] <= 247) gray++;
+      }
+    }
+  }
+  const fraction = band > 0 ? gray / band : 0;
+  return { band, gray, fraction };
+}
+
+function isAllWhite(values) {
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] < 250) return false;
+  }
+  return true;
+}
+
+// PAM explicitly carries black gray samples plus the unrounded inverse gray ramp.
+function prepareOutput(img, transparent, dpi) {
+  if (transparent) {
+    const w = img.width, h = img.height;
+    const gray = img.getPixels(p => p.toByteArray(0, 0, w, h, 'I'));
+    const header = 'P7\\nWIDTH ' + w + '\\nHEIGHT ' + h + '\\nDEPTH 2\\nMAXVAL 255\\nTUPLTYPE GRAYSCALE_ALPHA\\nENDHDR\\n';
+    const pam = new Uint8Array(header.length + gray.length * 2);
+    for (let i = 0; i < header.length; i++) pam[i] = header.charCodeAt(i);
+    for (let i = 0; i < gray.length; i++) pam[header.length + i * 2 + 1] = 255 - gray[i];
+    img.read(pam);
+  } else {
+    img.alpha(M.AlphaAction.Off);
+  }
+  img.colorType = transparent ? M.ColorType.GrayscaleAlpha : M.ColorType.Grayscale;
+  img.depth = 8;
+  img.strip();
+  img.density = new M.Density(dpi, M.DensityUnit.PixelsPerInch);
+  img.settings.setDefine(M.MagickFormat.Png, 'include-chunk', 'pHYs');
+  img.settings.setDefine(M.MagickFormat.Png, 'color-type', transparent ? 4 : 0);
+  img.settings.setDefine(M.MagickFormat.Png, 'bit-depth', 8);
+}
+
+let latestDraftGenId = 0;
+
+self.onmessage = async function(e) {
+  const msg = e.data;
+  if (msg.type === 'init') {
+    try {
+      await initEngine();
+      self.postMessage({ type: 'init-done', version: M.Magick.imageMagickVersion });
+    } catch (err) {
+      self.postMessage({ type: 'init-error', error: String(err.message || err) });
+    }
+    return;
+  }
+  if (msg.type === 'process') {
+    if (!msg.isExport) latestDraftGenId = msg.genId;
+    try {
+      await initEngine();
+      if (!msg.isExport) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        if (msg.genId !== latestDraftGenId) return;
+      }
+      await processImage(msg);
+    } catch (err) {
+      self.postMessage({ type: 'error', genId: msg.genId, isExport: msg.isExport, forVector: msg.forVector, error: String(err.message || err) });
+    }
+  }
+};
+
+async function processImage(msg) {
+  const { genId, bytes, params, isExport, forVector } = msg;
+  const blur = params.blur;
+  const blackPoint = params.blackPoint;
+  const whitePoint = params.whitePoint;
+  const upsample = params.upsample;
+  const speckArea = params.speckArea;
+  const dilation = params.dilation;
+  const trimFuzz = params.trimFuzz;
+  const border = params.border;
+  const dpi = params.dpi;
+
+  const MAX_OUTPUT_PIXELS = 25000000;
+
+  M.ImageMagick.read(bytes, img => {
+    try {
+      if (img.hasAlpha) {
+        img.backgroundColor = M.MagickColors.White;
+        img.alpha(M.AlphaAction.Remove);
+      }
+      img.colorSpace = M.ColorSpace.Gray;
+
+      const srcW = img.width, srcH = img.height;
+
+      let scale = upsample;
+      let procW, procH;
+      if (isExport) {
+        procW = Math.round(srcW * scale);
+        procH = Math.round(srcH * scale);
+      } else {
+        const draftMaxPixels = 400000;
+        const fullPixels = srcW * srcH * scale * scale;
+        if (fullPixels > draftMaxPixels) {
+          const draftScale = Math.sqrt(draftMaxPixels / (srcW * srcH));
+          procW = Math.round(srcW * draftScale);
+          procH = Math.round(srcH * draftScale);
+          scale = draftScale;
+        } else {
+          procW = Math.round(srcW * scale);
+          procH = Math.round(srcH * scale);
+        }
+      }
+
+      if (procW * procH > MAX_OUTPUT_PIXELS) {
+        self.postMessage({ type: 'error', genId, isExport, forVector, error: 'Output would be ' + procW + 'x' + procH + ' = ' + (procW*procH) + ' pixels, exceeding the 25 MP limit. Reduce upsample factor.' });
+        return;
+      }
+
+      // Downscaled drafts shrink first; otherwise flat-field runs at source scale before the upsample
+      const shrink = procW < srcW;
+      if (shrink) {
+        img.resize(procW, procH, M.FilterType.Triangle);
+      }
+
+      if (blur > 0) {
+        img.clone(bg => {
+          bg.blur(0, shrink ? blur * procW / srcW : blur);
+          img.composite(bg, M.CompositeOperator.DivideSrc);
+        });
+        img.normalize();
+      }
+
+      if (procW > srcW) {
+        img.resize(procW, procH, M.FilterType.Triangle);
+      }
+
+      // Levels: magick-wasm 0.0.43 passes the black point as a raw quantum, so convert it here
+      img.level(new M.Percentage(blackPoint * M.Quantum.max / 100), new M.Percentage(whitePoint));
+
+      // Build mask: threshold at 80%, invert, find specks with JS, dilate, composite
+      img.clone(mask => {
+        mask.threshold(new M.Percentage(80));
+        mask.negate();
+
+        const mw = mask.width, mh = mask.height;
+        const maskValues = mask.getPixels(p => p.toByteArray(0, 0, mw, mh, 'I'));
+        const sizes = scaledSizes(speckArea, dilation, scale);
+        const result = jsSpeckFilter(maskValues, mw, mh, sizes.areaCutoff);
+
+        const pgmHeader = 'P5\\n' + mw + ' ' + mh + '\\n255\\n';
+        const pgmBuf = new Uint8Array(pgmHeader.length + result.values.length);
+        for (let i = 0; i < pgmHeader.length; i++) pgmBuf[i] = pgmHeader.charCodeAt(i);
+        pgmBuf.set(result.values, pgmHeader.length);
+        mask.read(pgmBuf);
+
+        mask.threshold(new M.Percentage(50));
+
+        if (sizes.diskRadius > 0) {
+          mask.morphology(new M.MorphologySettings(M.MorphologyMethod.Dilate, 'Disk:' + sizes.diskRadius));
+        }
+
+        // Negate mask and composite with Lighten to restore grayscale inside, white outside
+        mask.negate();
+        img.composite(mask, M.CompositeOperator.Lighten);
+
+        img.colorFuzz = new M.Percentage(trimFuzz);
+        const checkW = img.width, checkH = img.height;
+        const checkValues = img.getPixels(p => p.toByteArray(0, 0, checkW, checkH, 'I'));
+        if (isAllWhite(checkValues)) {
+          self.postMessage({ type: 'empty-result', genId, isExport, forVector });
+          return;
+        }
+
+        img.trim();
+        img.resetPage();
+
+        if (border > 0) {
+          img.borderColor = M.MagickColors.White;
+          img.border(border);
+        }
+
+        // Encode only after cleanup; preserve the edge ramp in the selected channel.
+        const transparent = params.transparent !== false;
+        prepareOutput(img, transparent, dpi);
+
+        img.write(M.MagickFormat.Png, outBytes => {
+          M.ImageMagick.read(outBytes, gi => {
+            const gw = gi.width, gh = gi.height;
+            const gValues = gi.getPixels(p => p.toByteArray(0, 0, gw, gh, transparent ? 'A' : 'I'));
+            const guard = computeGuard(gValues, gw, gh, transparent ? 0 : 255);
+            guard.channel = transparent ? 'alpha' : 'gray';
+
+            self.postMessage({
+              type: 'done',
+              genId,
+              isExport,
+              forVector,
+              pngBytes: outBytes,
+              vectorGray: forVector ? (transparent ? Uint8Array.from(gValues, v => 255 - v) : gValues) : undefined,
+              width: gw,
+              height: gh,
+              guard,
+              source: isExport ? 'export' : 'draft',
+              components: result.components
+            });
+          });
+        });
+      });
+    } catch (err) {
+      self.postMessage({ type: 'error', genId, isExport, forVector, error: String(err.message || err) });
+    }
+  });
+}
+`;
+</script>
+<script>
+// ─── Defaults ───────────────────────────────────────────────
+const DEFAULTS = {
+  blur: 30, blackPoint: 8, whitePoint: 92, upsample: 3,
+  speckArea: 4, dilation: 1, trimFuzz: 2, border: 12, dpi: 300
+};
+const VECTOR_DEFAULTS = {
+  vectorThreshold: 128, vectorOffset: 0, vectorSpeck: 4,
+  vectorCorner: 1, vectorOptimize: 0.2
+};
+
+// ─── State ───────────────────────────────────────────────────
+let originalBytes = null;
+let originalFileName = 'image';
+let worker = null;
+let currentGenId = 0;
+let exportGenId = 0;
+let exportPending = false;
+let debounceTimer = null;
+let pngSaveJob = null;
+let vectorSaving = false;
+let vectorRenderedId = -1;
+let exportInProgress = false;
+let pipelinePaused = false;
+let resumePipelineRequested = false;
+let pickerSequence = 0;
+let expandedPreview = null;
+let draftPending = false;
+
+// ─── DOM ─────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const beforeCanvas = $('beforeCanvas');
+const afterCanvas = $('afterCanvas');
+const vectorCanvas = $('vectorCanvas');
+const beforeCtx = beforeCanvas.getContext('2d', { willReadFrequently: true });
+const afterCtx = afterCanvas.getContext('2d', { willReadFrequently: true });
+const statusBar = $('statusBar');
+const exportBtn = $('exportBtn');
+
+
+// ─── Worker management ───────────────────────────────────────
+function ensureWorker() {
+  if (pipelinePaused) return;
+  if (worker) return;
+  const blob = new Blob([scaledSizes.toString(), '\n', WORKER_SOURCE], { type: 'application/javascript' });
+  worker = new Worker(URL.createObjectURL(blob));
+  worker.onmessage = handleWorkerMessage;
+  worker.onerror = (e) => {
+    failPNGExport('Worker error: ' + e.message);
+    showStatus('Worker error: ' + e.message, true);
+    draftPending = false;
+    setVectorBusy(false);
+    if (vectorCleanupPending) {
+      vectorCleanupId++;
+      vectorCleanupPending = false;
+      vectorFailure('Cleanup failed: ' + e.message);
+    }
+  };
+  worker.postMessage({ type: 'init' });
+}
+
+function handleWorkerMessage(e) {
+  const msg = e.data;
+  if (msg.type === 'init-done') {
+    showStatus('Engine ready: ' + msg.version);
+    return;
+  }
+  if (msg.type === 'init-error') {
+    failPNGExport('Failed to load engine: ' + msg.error);
+    showStatus('Failed to load engine: ' + msg.error, true);
+    draftPending = false;
+    setVectorBusy(false);
+    return;
+  }
+  if (msg.forVector) { handleVectorCleanupMessage(msg); return; }
+  if (msg.genId !== (msg.isExport ? exportGenId : currentGenId)) return; // stale
+  if (msg.isExport) {
+    if (msg.type === 'done') finishPNGExport(msg);
+    else if (msg.type === 'error' || msg.type === 'empty-result') failPNGExport(msg.error || 'No ink remains to export.');
+    return;
+  }
+  if (!exportPending) $('progressBar').style.visibility = 'hidden';
+  if (msg.type === 'done') {
+    handleProcessDone(msg);
+  } else if (msg.type === 'empty-result') {
+    if (!msg.isExport) { draftPending = false; vectorFailure('No ink found. Adjust the cleanup settings.'); }
+    if (msg.isExport || !exportPending) showStatus('Result is all white — no ink detected. Check your settings.', false);
+    updateGuard({ band: 0, gray: 0, fraction: 0 }, msg.isExport ? 'export' : 'draft');
+  } else if (msg.type === 'error') {
+    if (!msg.isExport) { draftPending = false; vectorFailure(msg.error); }
+    if (msg.isExport || !exportPending) showStatus(msg.error, true);
+  }
+}
+
+function handleProcessDone(msg) {
+  const blob = new Blob([msg.pngBytes], { type: 'image/png' });
+  const url = URL.createObjectURL(blob);
+
+  const img = new Image();
+  img.onload = () => {
+    if (msg.genId !== (msg.isExport ? exportGenId : currentGenId)) { URL.revokeObjectURL(url); return; }
+    afterCanvas.width = msg.width;
+    afterCanvas.height = msg.height;
+    afterCtx.clearRect(0, 0, afterCanvas.width, afterCanvas.height);
+    afterCtx.drawImage(img, 0, 0);
+
+    setAfterInfo('raster', msg.width + ' × ' + msg.height + ' px');
+
+    updateGuard(msg.guard, msg.source);
+
+    const dpi = getParams().dpi;
+    const widthIn = (msg.width / dpi).toFixed(2);
+    const heightIn = (msg.height / dpi).toFixed(2);
+    if (msg.isExport || !exportPending) showStatus((msg.isExport ? 'Export ready' : 'Draft preview') + ' — ' + msg.width + '×' + msg.height + ' px, ' + widthIn + '×' + heightIn + ' in at ' + dpi + ' dpi');
+
+    URL.revokeObjectURL(url);
+    exportBtn.disabled = !!pngSaveJob || exportInProgress;
+    $('afterWrap').disabled = false;
+    if (!msg.isExport) {
+      draftPending = false;
+      startVectorTrace();
+    }
+  };
+  img.onerror = () => {
+    showStatus('Failed to render result', true);
+    if (!msg.isExport) { draftPending = false; setVectorBusy(false); }
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+}
+
+// ─── Processing ──────────────────────────────────────────────
+function getParams() {
+  return {
+    blur: parseInt($('blurSlider').value),
+    blackPoint: parseInt($('blackPointSlider').value),
+    whitePoint: parseInt($('whitePointSlider').value),
+    upsample: parseFloat($('upsampleSlider').value),
+    speckArea: parseInt($('speckAreaSlider').value),
+    dilation: DEFAULTS.dilation,
+    trimFuzz: DEFAULTS.trimFuzz,
+    border: parseInt($('borderSlider').value),
+    dpi: parseInt($('dpiSlider').value),
+    transparent: $('outputBackground').value === 'transparent'
+  };
+}
+
+function requestProcess(isExport, saveJob = null) {
+  if (pipelinePaused) { resumePipelineRequested = true; return; }
+  if (!originalBytes) return;
+  const params = saveJob?.params || getParams();
+
+  if (params.whitePoint <= params.blackPoint) {
+    showStatus('White point must be above black point', true);
+    if (!isExport) { draftPending = false; vectorFailure('White point must be above black point'); }
+    return;
+  }
+  const genId = isExport ? ++exportGenId : ++currentGenId;
+
+  if (!isExport) {
+    draftPending = true;
+    $('progressBar').style.visibility = 'visible';
+    $('progressFill').style.width = '50%';
+  } else {
+    exportPending = true;
+    showStatus('Processing full-resolution export...');
+    $('progressBar').style.visibility = 'visible';
+    $('progressFill').style.width = '30%';
+  }
+
+  ensureWorker();
+  worker.postMessage({
+    type: 'process',
+    genId,
+    bytes: saveJob?.bytes || originalBytes,
+    params,
+    isExport
+  });
+}
+
+// Keep the displayed results while a new draft and full-resolution trace replace them.
+function debounceProcess() {
+  if (pipelinePaused) { resumePipelineRequested = true; return; }
+  currentGenId++; // invalidate an older draft immediately, including its image decode
+  invalidateVector(true);
+  draftPending = !!originalBytes;
+  if (originalBytes) { setVectorBusy(true); showVectorProgress('Waiting for raster…'); }
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => { debounceTimer = null; requestProcess(false); }, 180);
+}
+
+// ─── UI helpers ──────────────────────────────────────────────
+function showStatus(msg, isError) {
+  statusBar.textContent = msg;
+  statusBar.classList.toggle('error', !!isError);
+}
+
+function setAfterInfo(mode, text) {
+  $(mode === 'raster' ? 'afterInfo' : 'vectorInfo').textContent = text;
+}
+
+function updateGuard(guard, source) {
+  $('guardBand').textContent = guard.band;
+  $('guardGray').textContent = guard.gray;
+  $('guardFraction').textContent = (guard.fraction * 100).toFixed(1) + '%';
+  $('guardSource').textContent = source + (guard.channel ? ' · ' + guard.channel : '');
+
+  $('aliasingGuard').dataset.risk = String(guard.band >= 100 && (guard.fraction < 0.20 || guard.gray === 0));
+  const statusEl = $('guardStatus');
+  statusEl.className = 'guard-status';
+
+  if (guard.band < 100) {
+    statusEl.classList.add('guard-insufficient');
+    statusEl.textContent = 'Insufficient evidence — too few edge samples (' + guard.band + ' pixels, need ≥100). Cannot assess anti-aliasing.';
+  } else if (guard.fraction < 0.05) {
+    statusEl.classList.add('guard-binary');
+    statusEl.textContent = 'Edges are effectively binary (soft fraction <5%). Resizing may produce jagged edges.';
+  } else if (guard.fraction < 0.20) {
+    statusEl.classList.add('guard-few');
+    statusEl.textContent = 'Few intermediate edge tones (5–20%). Some risk of aliasing.';
+  } else {
+    statusEl.classList.add('guard-present');
+    statusEl.textContent = 'Intermediate edge tones present (≥20%). Edges have a soft ramp that should resample acceptably.';
+  }
+
+  if (guard.band >= 100 && guard.gray === 0) {
+    statusEl.classList.add('guard-binary');
+    statusEl.textContent = 'Edges are effectively binary (0% intermediate tones). Resizing may produce jagged edges.';
+  }
+}
+
+function updateBorderMm() {
+  const dpi = parseInt($('dpiSlider').value);
+  const borderPx = parseInt($('borderSlider').value);
+  const mm = (borderPx / dpi * 25.4).toFixed(1);
+  $('borderMm').textContent = '~' + mm + ' mm at ' + dpi + ' dpi';
+}
+
+// ─── File loading ────────────────────────────────────────────
+function loadFile(file) {
+  if (!file) return;
+  const lowerName = file.name.toLowerCase();
+  if (!lowerName.endsWith('.png')) {
+    showStatus('Unsupported file type. v1 accepts PNG only.', true);
+    return;
+  }
+  currentGenId++;
+  clearTimeout(debounceTimer);
+  debounceTimer = null;
+  invalidateVector(true);
+  originalFileName = file.name;
+  $('sourceName').textContent = file.name;
+  exportGenId++;
+  if (pngSaveJob) failPNGExport('Save cancelled because the source image changed.');
+  exportPending = false;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    originalBytes = new Uint8Array(e.target.result);
+
+    const img = new Image();
+    img.onload = () => {
+      beforeCanvas.width = img.naturalWidth;
+      beforeCanvas.height = img.naturalHeight;
+      beforeCtx.clearRect(0, 0, beforeCanvas.width, beforeCanvas.height);
+      beforeCtx.drawImage(img, 0, 0);
+      $('beforeWrap').disabled = false;
+      $('beforeInfo').textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' px';
+      showStatus('Loaded: ' + file.name + ' (' + img.naturalWidth + '×' + img.naturalHeight + ')');
+      ensureWorker();
+      setVectorBusy(true);
+      showVectorProgress('Waiting for raster…');
+      requestProcess(false);
+    };
+    img.onerror = () => showStatus('Failed to load image', true);
+    img.src = URL.createObjectURL(new Blob([originalBytes]));
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ─── Expanded previews ───────────────────────────────────────
+const previewGroups = {
+  before: ['beforeColumn'],
+  raster: ['rasterControls', 'rasterOutput'],
+  vector: ['vectorControls', 'vectorOutput']
+};
+const previewButtons = { before: 'beforeWrap', raster: 'afterWrap', vector: 'vectorWrap' };
+function expandPreview(mode) {
+  const previous = expandedPreview;
+  expandedPreview = mode === expandedPreview ? null : mode;
+  if (expandedPreview) $('workspace').dataset.expanded = expandedPreview;
+  else delete $('workspace').dataset.expanded;
+  for (const [group, ids] of Object.entries(previewGroups)) {
+    for (const id of ids) $(id).hidden = !!expandedPreview && group !== expandedPreview;
+    const button = $(previewButtons[group]);
+    button.setAttribute('aria-expanded', String(group === expandedPreview));
+    button.setAttribute('aria-label', group === expandedPreview ? 'Restore all previews' : 'Expand ' + group + ' preview');
+  }
+  $('vectorWrap').disabled = !vectorDocument && expandedPreview !== 'vector';
+  $('restoreLayout').hidden = !expandedPreview;
+  $('restoreLayout').textContent = 'Show all';
+  if (!expandedPreview && previous) $(previewButtons[previous]).focus();
+}
+for (const [mode, id] of Object.entries(previewButtons)) $(id).addEventListener('click', () => expandPreview(mode));
+$('restoreLayout').addEventListener('click', () => expandPreview(null));
+
+// ─── Event wiring ────────────────────────────────────────────
+$('fileInput').addEventListener('change', (e) => {
+  loadFile(e.target.files[0]);
+});
+
+const dropZone = $('dropZone');
+dropZone.addEventListener('click', () => $('fileInput').click());
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+// Labels echo each value in the operator's own units (-resize takes a percentage).
+const sliderMap = [
+  ['blurSlider', 'blurVal', 'blur'],
+  ['upsampleSlider', 'upsampleVal', 'upsample', v => Math.round(v * 100)],
+  ['blackPointSlider', 'blackPointVal', 'blackPoint'],
+  ['whitePointSlider', 'whitePointVal', 'whitePoint'],
+  ['speckAreaSlider', 'speckAreaVal', 'speckArea'],
+  ['borderSlider', 'borderVal', 'border'],
+  ['dpiSlider', 'dpiVal', 'dpi']
+];
+function showSliderValue([sliderId, valId, , format]) {
+  $(valId).textContent = format ? format(+$(sliderId).value) : $(sliderId).value;
+}
+
+sliderMap.forEach(entry => {
+  const sliderId = entry[0];
+  $(sliderId).addEventListener('input', () => {
+    showSliderValue(entry);
+    if (sliderId === 'borderSlider' || sliderId === 'dpiSlider') updateBorderMm();
+    debounceProcess();
+  });
+});
+
+$('previewBackground').addEventListener('change', updatePreviewBackground);
+$('vectorPreviewBackground').addEventListener('change', updatePreviewBackground);
+function updatePreviewBackground() {
+  $('afterWrap').dataset.background = $('previewBackground').value;
+  $('vectorWrap').dataset.background = $('vectorPreviewBackground').value;
+}
+$('outputBackground').addEventListener('change', debounceProcess);
+
+$('resetBtn').addEventListener('click', () => {
+  $('outputBackground').value = 'transparent';
+  $('previewBackground').value = 'white';
+  $('vectorPreviewBackground').value = 'white';
+  updatePreviewBackground();
+  sliderMap.forEach(entry => {
+    $(entry[0]).value = DEFAULTS[entry[2]];
+    showSliderValue(entry);
+  });
+  for (const [id, value] of Object.entries(VECTOR_DEFAULTS)) {
+    $(id).value = value;
+    $(id + 'Val').textContent = value;
+  }
+  $('vectorAuto').checked = true;
+  $('vectorThreshold').disabled = true;
+  $('vectorThresholdVal').textContent = 'auto';
+  updateBorderMm();
+  debounceProcess();
+});
+
+// Stop this page's workers and invalidate in-flight image decodes while a native
+// dialog is open. Preserve rendered previews and replay interrupted work on return.
+function pausePipelineForSave() {
+  resumePipelineRequested = draftPending || vectorBusy || vectorCleanupPending || !!debounceTimer || !!vectorDebounceTimer;
+  const currentVector = vectorRenderedId === vectorId && !vectorBusy;
+  pipelinePaused = true;
+  clearTimeout(debounceTimer); clearTimeout(vectorDebounceTimer);
+  debounceTimer = vectorDebounceTimer = null;
+  currentGenId++; vectorId++; vectorCleanupId++;
+  if (currentVector) vectorRenderedId = vectorId;
+  for (const active of [worker, vectorWorker]) {
+    if (!active) continue;
+    active.onmessage = active.onerror = null;
+    active.terminate?.();
+  }
+  worker = vectorWorker = null;
+  draftPending = vectorCleanupPending = vectorBusy = false;
+}
+function resumePipelineAfterSave() {
+  pipelinePaused = false;
+  const resume = resumePipelineRequested;
+  resumePipelineRequested = false;
+  if (resume && originalBytes) debounceProcess();
+}
+// One save interface for every format. No await or encoding precedes the picker.
+async function exportFile(blobOrProducer, suggestedName, mime, extension) {
+  if (exportInProgress) return 'Save already in progress.';
+  exportInProgress = true;
+  exportBtn.disabled = $('vectorExportBtn').disabled = true;
+  try {
+    let handle = null;
+    if (typeof globalThis.showSaveFilePicker === 'function') {
+      pausePipelineForSave();
+      try {
+        const options = { suggestedName, types: [{ accept: { [mime]: [extension] } }] };
+        console.info?.('Save picker', { sequence: ++pickerSequence, at: new Date().toISOString(), extension });
+        handle = await globalThis.showSaveFilePicker(options);
+      } finally { resumePipelineAfterSave(); }
+    }
+    const blob = typeof blobOrProducer === 'function' ? await blobOrProducer() : await blobOrProducer;
+    if (handle) {
+      const stream = await handle.createWritable();
+      try { await stream.write(blob); await stream.close(); }
+      catch (error) { try { await stream.abort(); } catch {} throw error; }
+      return 'Saved ' + suggestedName;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = suggestedName; a.hidden = true;
+    document.body.appendChild(a); a.click();
+    // Keep the common fallback's independent URL/anchor until document close.
+    return 'Download started: ' + suggestedName;
+  } finally {
+    exportInProgress = false;
+    exportBtn.disabled = !!pngSaveJob || !originalBytes;
+    $('vectorExportBtn').disabled = vectorSaving || vectorBusy || !vectorDocument || vectorRenderedId !== vectorId;
+  }
+}
+function failPNGExport(message) {
+  if (!pngSaveJob) return;
+  const job = pngSaveJob;
+  pngSaveJob = null; exportPending = false; exportBtn.disabled = false;
+  if (job.reject) job.reject(new Error(message));
+  $('progressBar').style.visibility = 'hidden';
+  showStatus(message, true);
+}
+function finishPNGExport(msg) {
+  const job = pngSaveJob;
+  if (!job || !job.resolve || job.saving) return;
+  job.saving = true;
+  job.resolve(new Blob([msg.pngBytes], {type:job.spec.mime}));
+}
+exportBtn.addEventListener('click', async () => {
+  if (!originalBytes || pngSaveJob || exportInProgress || exportBtn.disabled) return;
+  const job = { spec: exportFileSpec('png', originalFileName), bytes: originalBytes, params: getParams() };
+  if (job.params.whitePoint <= job.params.blackPoint) { showStatus('White point must be above black point', true); return; }
+  pngSaveJob = job; exportBtn.disabled = true;
+  try {
+    const status = await exportFile(() => new Promise((resolve, reject) => {
+      if (pngSaveJob !== job) { reject(new Error('Source image changed.')); return; }
+      job.resolve = resolve; job.reject = reject;
+      requestProcess(true, job);
+    }), job.spec.name, job.spec.mime, '.' + job.spec.format);
+    if (pngSaveJob === job) showStatus(status);
+  } catch (error) {
+    if (pngSaveJob === job) showStatus(error.name === 'AbortError' ? 'Save cancelled.' : 'Export failed: ' + error.message, error.name !== 'AbortError');
+  } finally {
+    if (pngSaveJob === job) { pngSaveJob = null; exportPending = false; exportBtn.disabled = false; $('progressBar').style.visibility = 'hidden'; }
+  }
+});
+
+// ─── Vector view (potrace) ──────────────────────────────────
+let vectorWorker = null;
+let vectorId = 0, vectorCleanupId = 0, vectorCleanupPending = false;
+let vectorRasterGray = null, vectorRasterSize = null;
+let vectorResult = null, vectorDocument = null, vectorURLs = [];
+let vectorBusy = false;
+let vectorDebounceTimer = null;
+const VECTOR_DEBOUNCE_MS = 180;
+function showVectorProgress(message) {
+  $('vectorStatus').textContent = message;
+}
+
+function revokeVectorURLs() {
+  vectorURLs.forEach(url => URL.revokeObjectURL(url));
+  vectorURLs = [];
+}
+function setVectorBusy(busy) {
+  vectorBusy = busy;
+}
+function invalidateVector(clearRaster = false) {
+  clearTimeout(vectorDebounceTimer);
+  vectorDebounceTimer = null;
+  vectorId++;
+  $('vectorExportBtn').disabled = true;
+  $('vectorWrap').disabled = !vectorDocument && expandedPreview !== 'vector';
+  if (clearRaster) {
+    vectorCleanupId++;
+    vectorCleanupPending = false;
+    if (vectorWorker) vectorWorker.terminate();
+    vectorWorker = null;
+    vectorRasterGray = vectorRasterSize = null;
+  }
+  setVectorBusy(false);
+}
+// Both kinds of edits use fresh full-resolution cleanup; rapid changes coalesce.
+function debounceVectorTrace() {
+  if (pipelinePaused) { resumePipelineRequested = true; return; }
+  invalidateVector(true);
+  if (!originalBytes) return;
+  setVectorBusy(true);
+  if (draftPending) { showVectorProgress('Waiting for raster…'); return; }
+  showVectorProgress('Waiting to trace…');
+  vectorDebounceTimer = setTimeout(() => {
+    vectorDebounceTimer = null;
+    startVectorTrace();
+  }, VECTOR_DEBOUNCE_MS);
+}
+function vectorOptions() {
+  return { auto: $('vectorAuto').checked, threshold: +$('vectorThreshold').value,
+    offset: +$('vectorOffset').value, speck: +$('vectorSpeck').value,
+    turd: +$('vectorSpeck').value, corner: +$('vectorCorner').value, optimize: +$('vectorOptimize').value };
+}
+function vectorFailure(message) {
+  setVectorBusy(false);
+  $('vectorStatus').textContent = message;
+  $('vectorExportBtn').disabled = true;
+}
+// A classic Blob worker also works from file://; Chromium rejects module Blob
+// workers at that opaque origin. Dynamic import still loads the pinned ESM tracer.
+function makeVectorWorker(source) {
+  const url = URL.createObjectURL(new Blob(source, { type: 'application/javascript' }));
+  try { return new Worker(url); }
+  finally { URL.revokeObjectURL(url); }
+}
+function describeTracerError(event, origin) {
+  const detail = event.error ? String(event.error.stack || event.error.message || event.error) : 'unavailable';
+  const message = event.message || 'Worker load or runtime failure (browser supplied no message)';
+  return message + ' [event=' + (event.type || event.name || 'unknown') +
+    '; origin=' + origin + '; filename=' + (event.filename || 'unavailable') +
+    '; line=' + (event.lineno ?? 'unavailable') + '; column=' + (event.colno ?? 'unavailable') +
+    '; error=' + detail + ']';
+}
+function reportTracerError(event) {
+  const origin = globalThis.origin || globalThis.location?.origin || 'unknown';
+  const detail = describeTracerError(event, origin);
+  console.error('Potrace worker failure:', detail, event, event.error);
+  vectorFailure('Tracer failed: ' + detail + (origin === 'null' ?
+    '. This page has an opaque origin; check your internet connection and try another browser.' :
+    '. Change a setting to retry.'));
+}
+function requestVectorTrace() {
+  if (pipelinePaused) { resumePipelineRequested = true; return; }
+  if (!vectorWorker) {
+    try {
+      vectorWorker = makeVectorWorker([otsuThreshold.toString(), '\n', jsSpeckFilter.toString(), '\n', vectorMask.toString(), '\n', VECTOR_WORKER_SOURCE]);
+    } catch (error) { reportTracerError(error); return; }
+    vectorWorker.onmessage = ({ data: msg }) => {
+      if (msg.id !== vectorId) return;
+      if (msg.type === 'vector-empty') { vectorFailure('Insufficient evidence — no traced ink. Adjust the settings.'); return; }
+      if (msg.type === 'vector-error') { console.error('Potrace trace failure:', msg.error); vectorFailure(msg.error); return; }
+      vectorResult = msg;
+      if ($('vectorAuto').checked) {
+        $('vectorThreshold').value = msg.automatic;
+        $('vectorThresholdVal').textContent = 'auto · ' + msg.automatic;
+      }
+      renderVectorResult(msg.id);
+    };
+    vectorWorker.onerror = e => {
+      vectorWorker.terminate(); vectorWorker = null;
+      reportTracerError(e);
+    };
+  }
+  showVectorProgress('Tracing full-resolution ink…');
+  vectorWorker.postMessage({ id: vectorId, gray: vectorRasterGray, ...vectorRasterSize, options: vectorOptions() });
+}
+// Display the SVG at its pixel bounds; CSS enlarges the canvas in expanded mode.
+async function renderVectorResult(id) {
+  let svgURL;
+  try {
+    const result = vectorResult, dpi = getParams().dpi;
+    const doc = assembleVectorSVG(result.paths, result.traceHeight, dpi, $('vectorColor').value);
+    svgURL = URL.createObjectURL(new Blob([doc.svg], { type: 'image/svg+xml' }));
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('Unable to render the vector preview'));
+      img.src = svgURL;
+    });
+    if (id !== vectorId) { URL.revokeObjectURL(svgURL); return; }
+    vectorCanvas.width = Math.ceil(doc.bounds.width);
+    vectorCanvas.height = Math.ceil(doc.bounds.height);
+    vectorCanvas.getContext('2d').drawImage(img, 0, 0, doc.bounds.width, doc.bounds.height);
+    revokeVectorURLs();
+    vectorURLs = [svgURL];
+    vectorDocument = doc;
+    vectorRenderedId = id;
+    const mm = n => (n / dpi * 25.4).toFixed(2);
+    setAfterInfo('vector', mm(doc.bounds.width) + ' × ' + mm(doc.bounds.height) + ' mm · ' + Math.ceil(doc.bounds.width) + ' × ' + Math.ceil(doc.bounds.height) + ' px');
+    $('vectorStatus').textContent = 'Vector ready.';
+    $('vectorExportBtn').disabled = vectorSaving || exportInProgress;
+    $('vectorWrap').disabled = false;
+    setVectorBusy(false);
+  } catch (error) {
+    if (svgURL && !vectorURLs.includes(svgURL)) URL.revokeObjectURL(svgURL);
+    if (id === vectorId) vectorFailure(error.message);
+  }
+}
+function startVectorTrace() {
+  if (pipelinePaused) { resumePipelineRequested = true; return; }
+  if (!originalBytes) { vectorFailure('Load a PNG before tracing.'); return; }
+  const params = getParams();
+  if (params.whitePoint <= params.blackPoint) { vectorFailure('White point must be above black point.'); return; }
+  invalidateVector(true);
+  setVectorBusy(true);
+  showVectorProgress('Preparing full-resolution cleanup…');
+  vectorCleanupPending = true;
+  ensureWorker();
+  worker.postMessage({ type: 'process', genId: vectorCleanupId, isExport: true, forVector: true, bytes: originalBytes, params });
+}
+function handleVectorCleanupMessage(msg) {
+  if (msg.genId !== vectorCleanupId) return;
+  vectorCleanupPending = false;
+  if (msg.type !== 'done') {
+    vectorFailure(msg.error || 'No ink found. Adjust the magick cleanup settings.'); return;
+  }
+  vectorRasterGray = msg.vectorGray;
+  vectorRasterSize = { width: msg.width, height: msg.height };
+  if (vectorBusy) requestVectorTrace();
+}
+
+for (const id of ['vectorThreshold', 'vectorOffset', 'vectorSpeck', 'vectorCorner', 'vectorOptimize']) {
+  $(id).addEventListener('input', () => {
+    $(id + 'Val').textContent = $(id).value;
+    debounceVectorTrace();
+  });
+}
+$('vectorAuto').addEventListener('change', () => {
+  $('vectorThreshold').disabled = $('vectorAuto').checked;
+  $('vectorThresholdVal').textContent = $('vectorAuto').checked ? 'auto' : $('vectorThreshold').value;
+  debounceVectorTrace();
+});
+$('vectorColor').addEventListener('input', debounceVectorTrace);
+$('vectorExportBtn').addEventListener('click', async () => {
+  if (!vectorDocument || vectorBusy || vectorSaving || exportInProgress || $('vectorExportBtn').disabled) return;
+  let generation = vectorId;
+  vectorSaving = true; $('vectorExportBtn').disabled = true;
+  try {
+    const spec = exportFileSpec($('vectorFormat').value, originalFileName);
+    // Snapshot values only; serialization waits until the common picker returns.
+    const paths = vectorResult.paths.slice(), svg = vectorDocument.svg;
+    const dpi = getParams().dpi, color = $('vectorColor').value, background = $('outputBackground').value;
+    const saving = exportFile(() => {
+      const content = spec.format === 'pdf' ? assembleVectorPDF(paths, dpi, color, background) :
+        spec.format === 'dxf' ? assembleVectorDXF(paths, dpi, color) : svg;
+      return new Blob([content], {type:spec.mime});
+    }, spec.name, spec.mime, '.' + spec.format);
+    generation = vectorId;
+    const status = await saving;
+    if (generation === vectorId) $('vectorStatus').textContent = status;
+  } catch (error) {
+    if (generation === vectorId) $('vectorStatus').textContent = error.name === 'AbortError' ? 'Save cancelled.' : 'Export failed: ' + error.message;
+  } finally {
+    vectorSaving = false;
+    $('vectorExportBtn').disabled = vectorBusy || !vectorDocument || vectorRenderedId !== vectorId;
+  }
+});
+
+updateBorderMm();
+</script>
+</body>
+</html>

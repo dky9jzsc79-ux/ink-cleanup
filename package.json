@@ -1,0 +1,10 @@
+{
+  "name": "ink-cleanup",
+  "version": "1.0.0",
+  "description": "Browser tool to streamline cleaning and vectorizing scanned linework",
+  "type": "module",
+  "scripts": {
+    "test": "node tests.mjs"
+  },
+  "license": "GPL-2.0-or-later"
+}
